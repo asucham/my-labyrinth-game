@@ -70,6 +70,10 @@ const PlayScreen = ({ userId, setScreen, gameMode, debugMode }) => {
     // 感想戦モード状態管理
     const [showReviewMode, setShowReviewMode] = useState(false);
     
+    // リザルト画面状態管理
+    const [showResultModal, setShowResultModal] = useState(false);
+    const [resultData, setResultData] = useState(null);
+    
     // 移動中状態管理（2秒待機機能）
     const [isMoving, setIsMoving] = useState(false);
     const [hitWalls, setHitWalls] = useState([]); // プレイヤーがぶつかった壁を記録
@@ -88,6 +92,15 @@ const PlayScreen = ({ userId, setScreen, gameMode, debugMode }) => {
 
     // ユーザー名を取得
     const currentUserName = getUsername() || "未設定ユーザー";
+
+    // ユーザーIDからユーザー名を取得するヘルパー関数
+    const getUserNameById = (userId) => {
+        if (userId === effectiveUserId) {
+            return currentUserName;
+        }
+        // 他のプレイヤーのユーザー名を取得（実際の実装では、ゲームデータからプレイヤー名を取得）
+        return gameData?.playerStates?.[userId]?.playerName || getUsername() || `プレイヤー${userId.substring(0,8)}...`;
+    };
 
     // 追加: 不足している変数の定義
     const isMyStandardTurn = gameData?.currentTurnPlayerId === effectiveUserId && gameType === 'standard';
@@ -307,18 +320,37 @@ const PlayScreen = ({ userId, setScreen, gameMode, debugMode }) => {
                 updates[`playerStates.${effectiveUserId}.goalTime`] = serverTimestamp();
                 updates.goalCount = increment(1);
                 
+                // リザルトデータを準備
+                const currentGoalCount = (gameData.goalCount || 0);
+                let goalPoints = 0;
+                let rankMessage = "";
+                
                 // 四人対戦モードでのゴール順位によるポイント付与
                 if (gameData?.mode === '4player') {
                     const goalOrder = [20, 15, 10, 0]; // 1位, 2位, 3位, 4位のポイント
-                    const currentGoalCount = (gameData.goalCount || 0);
-                    const goalPoints = goalOrder[currentGoalCount] || 0;
+                    goalPoints = goalOrder[currentGoalCount] || 0;
                     if (goalPoints > 0) {
                         updates[`playerStates.${effectiveUserId}.score`] = increment(goalPoints);
                     }
+                    rankMessage = `${currentGoalCount + 1}位でゴール達成！`;
                     setMessage(`ゴール達成！${currentGoalCount + 1}位 +${goalPoints}pt`);
                 } else {
+                    rankMessage = "ゴール達成！";
                     setMessage("ゴール達成！");
                 }
+                
+                // リザルト画面のデータを設定
+                setTimeout(() => {
+                    setResultData({
+                        isGoal: true,
+                        rank: currentGoalCount + 1,
+                        points: goalPoints,
+                        message: rankMessage,
+                        totalScore: (effectivePlayerState.score || 0) + goalPoints,
+                        goalTime: new Date()
+                    });
+                    setShowResultModal(true);
+                }, 1000);
             }
 
             // バトル発生処理
@@ -334,7 +366,9 @@ const PlayScreen = ({ userId, setScreen, gameMode, debugMode }) => {
                 };
                 
                 // オープンチャットに通知
-                sendSystemChatMessage(`${effectiveUserId.substring(0,8)}...と${battleOpponent.substring(0,8)}...でバトルが発生しました！`);
+                const myName = getUserNameById(effectiveUserId);
+                const opponentName = getUserNameById(battleOpponent);
+                sendSystemChatMessage(`${myName}と${opponentName}でバトルが発生しました！`);
                 
                 // バトルモーダルを開く
                 setBattleOpponentId(battleOpponent);
@@ -351,7 +385,9 @@ const PlayScreen = ({ userId, setScreen, gameMode, debugMode }) => {
                 updates.currentTurnPlayerId = nextPlayerId;
                 updates.turnNumber = increment(1);
                 
-                console.log(`🔧 [DEBUG] Auto turn switch: ${gameData.currentTurnPlayerId.substring(0,8)}... → ${nextPlayerId.substring(0,8)}...`);
+                const currentPlayerName = getUserNameById(gameData.currentTurnPlayerId);
+                const nextPlayerName = getUserNameById(nextPlayerId);
+                console.log(`🔧 [DEBUG] Auto turn switch: ${currentPlayerName} → ${nextPlayerName}`);
             }
             
             await updateDoc(gameDocRef, updates);
@@ -436,11 +472,11 @@ const PlayScreen = ({ userId, setScreen, gameMode, debugMode }) => {
                 // 敗者に1ターン行動不能状態を付与
                 updates[`playerStates.${loser}.skipNextTurn`] = true;
                 
-                const winnerName = winner === effectiveUserId ? currentUserName : `${battleOpponentId.substring(0,8)}...`;
+                const winnerName = winner === effectiveUserId ? currentUserName : getUserNameById(battleOpponentId);
                 setMessage(`バトル結果: ${winnerName}の勝利！ (${myBet} vs ${opponentBet})`);
                 
                 // オープンチャットに結果を通知
-                const systemWinnerName = winner === effectiveUserId ? currentUserName : `${winner.substring(0,8)}...`;
+                const systemWinnerName = getUserNameById(winner);
                 sendSystemChatMessage(`勝者は${systemWinnerName}です！`);
             } else {
                 setMessage(`バトル結果: 引き分け (${myBet} vs ${opponentBet})`);
@@ -923,6 +959,19 @@ const PlayScreen = ({ userId, setScreen, gameMode, debugMode }) => {
                         if (mazeToPlayData && r === mazeToPlayData.goal.r && c === mazeToPlayData.goal.c && !myPlayerState.goalTime) {
                             updates[`playerStates.${userId}.goalTime`] = serverTimestamp();
                             updates.goalCount = increment(1);
+                            
+                            // エクストラモードのリザルト表示
+                            setTimeout(() => {
+                                setResultData({
+                                    isGoal: true,
+                                    rank: (gameData.goalCount || 0) + 1,
+                                    points: 50, // エクストラモードのゴールボーナス
+                                    message: "ゴール達成！",
+                                    totalScore: (myPlayerState.score || 0) + 50,
+                                    goalTime: new Date()
+                                });
+                                setShowResultModal(true);
+                            }, 1000);
                         }
                         
                         setMessage(`(${r},${c})に移動しました！`);
@@ -937,7 +986,7 @@ const PlayScreen = ({ userId, setScreen, gameMode, debugMode }) => {
                             position: targetPos,
                             round: gameData.roundNumber
                         });
-                        setMessage(`${action.targetId.substring(0,8)}...の位置を偵察しました。`);
+                        setMessage(`${getUserNameById(action.targetId)}の位置を偵察しました。`);
                     }
                     break;
                     
@@ -950,7 +999,7 @@ const PlayScreen = ({ userId, setScreen, gameMode, debugMode }) => {
                         };
                         
                         updates[`playerStates.${action.targetId}.sabotageEffects`] = arrayUnion(sabotageEffect);
-                        setMessage(`${action.targetId.substring(0,8)}...に妨害を実行しました。`);
+                        setMessage(`${getUserNameById(action.targetId)}に妨害を実行しました。`);
                     }
                     break;
                     
@@ -967,7 +1016,7 @@ const PlayScreen = ({ userId, setScreen, gameMode, debugMode }) => {
                         };
                         
                         updates[`negotiations.${userId}-${action.targetId}-${Date.now()}`] = negotiationProposal;
-                        setMessage(`${action.targetId.substring(0,8)}...に交渉を提案しました。`);
+                        setMessage(`${getUserNameById(action.targetId)}に交渉を提案しました。`);
                     }
                     break;
                     
@@ -1061,6 +1110,19 @@ const PlayScreen = ({ userId, setScreen, gameMode, debugMode }) => {
                 updates[`playerStates.${userId}.goalTime`] = serverTimestamp();
                 updates.goalCount = increment(1);
                 setMessage("ゴール達成！");
+                
+                // リザルト表示
+                setTimeout(() => {
+                    setResultData({
+                        isGoal: true,
+                        rank: (gameData.goalCount || 0) + 1,
+                        points: 0,
+                        message: "ゴール達成！",
+                        totalScore: (myPlayerState.score || 0) + 1,
+                        goalTime: new Date()
+                    });
+                    setShowResultModal(true);
+                }, 1000);
             }
             
             await updateDoc(gameDocRef, updates);
@@ -1913,6 +1975,73 @@ const PlayScreen = ({ userId, setScreen, gameMode, debugMode }) => {
                     userId={userId}
                     onReturnToLobby={() => setScreen('lobby')}
                     onStartReview={() => setShowReviewMode(true)}
+                />
+            )}
+
+            {/* リザルトモーダル */}
+            {showResultModal && resultData && (
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+                    <div className="bg-white rounded-lg p-8 max-w-md w-11/12">
+                        <div className="text-center">
+                            <Trophy className="mx-auto mb-4 text-yellow-500" size={48} />
+                            <h2 className="text-2xl font-bold mb-4 text-gray-800">
+                                {resultData.message}
+                            </h2>
+                            
+                            <div className="mb-6 space-y-2">
+                                {resultData.rank && (
+                                    <p className="text-lg text-gray-700">
+                                        順位: {resultData.rank}位
+                                    </p>
+                                )}
+                                {resultData.points > 0 && (
+                                    <p className="text-lg text-green-600">
+                                        獲得ポイント: +{resultData.points}pt
+                                    </p>
+                                )}
+                                <p className="text-lg text-gray-700">
+                                    合計スコア: {resultData.totalScore}pt
+                                </p>
+                                <p className="text-sm text-gray-500">
+                                    ゴール時刻: {resultData.goalTime.toLocaleTimeString()}
+                                </p>
+                            </div>
+                            
+                            <div className="flex flex-col space-y-3">
+                                <button
+                                    onClick={() => {
+                                        setShowResultModal(false);
+                                        setShowReviewMode(true);
+                                    }}
+                                    className="w-full bg-blue-500 text-white py-2 px-4 rounded-lg hover:bg-blue-600 transition-colors"
+                                >
+                                    感想戦モードへ
+                                </button>
+                                <button
+                                    onClick={() => {
+                                        setShowResultModal(false);
+                                        setScreen('lobby');
+                                    }}
+                                    className="w-full bg-gray-500 text-white py-2 px-4 rounded-lg hover:bg-gray-600 transition-colors"
+                                >
+                                    ロビーに戻る
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* 感想戦モード */}
+            {showReviewMode && (
+                <ReviewModeScreen
+                    gameData={gameData}
+                    mazeData={mazeToPlayData}
+                    userId={userId}
+                    onExit={() => {
+                        setShowReviewMode(false);
+                        setScreen('lobby');
+                    }}
                 />
             )}
 
