@@ -1549,7 +1549,7 @@ const PlayScreen = ({ userId, setScreen, gameMode, debugMode }) => {
             <ReviewModeScreen
                 gameData={gameData}
                 userId={userId}
-                onClose={() => {
+                onExit={() => {
                     setShowReviewMode(false);
                     setScreen('lobby');
                 }}
