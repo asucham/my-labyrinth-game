@@ -231,28 +231,28 @@ const MazeGrid = ({
                     // 壁の境界線スタイルを設定
                     let borderStyles = "";
                     const wallBorderThickness = gridSize > 7 ? 'border' : 'border-2';
-                    const wallBorder = smallView ? 'border-black' : `border-black ${wallBorderThickness}`;
+                    const wallBorder = smallView ? 'border-black' : `border-black border-2`; // 常にborder-2を使用
                     const pathBorder = smallView ? 'border-gray-300' : 'border-gray-300';
                     const outerBorderThickness = gridSize > 7 ? 'border-black' : 'border-t-2 border-t-black';
 
                     // 上の境界線を設定
                     if (r === 0) borderStyles += ` border-t ${gridSize > 7 && smallView ? 'border-black' : outerBorderThickness}`;
-                    else if (hasWallBetween(r,c,r-1,c)) borderStyles += ` border-t ${wallBorderThickness} border-t-black`; 
+                    else if (hasWallBetween(r,c,r-1,c)) borderStyles += ` border-t border-2 border-t-black`; 
                     else borderStyles += ` border-t ${pathBorder}`;
                     
                     // 下の境界線を設定
                     if (r === gridSize - 1) borderStyles += ` border-b ${gridSize > 7 && smallView ? 'border-black' : `border-b-2 border-b-black`}`;
-                    else if (hasWallBetween(r,c,r+1,c)) borderStyles += ` border-b ${wallBorderThickness} border-b-black`; 
+                    else if (hasWallBetween(r,c,r+1,c)) borderStyles += ` border-b border-2 border-b-black`; 
                     else borderStyles += ` border-b ${pathBorder}`;
 
                     // 左の境界線を設定
                     if (c === 0) borderStyles += ` border-l ${gridSize > 7 && smallView ? 'border-black' : `border-l-2 border-l-black`}`;
-                    else if (hasWallBetween(r,c,r,c-1)) borderStyles += ` border-l ${wallBorderThickness} border-l-black`; 
+                    else if (hasWallBetween(r,c,r,c-1)) borderStyles += ` border-l border-2 border-l-black`; 
                     else borderStyles += ` border-l ${pathBorder}`;
 
                     // 右の境界線を設定
                     if (c === gridSize - 1) borderStyles += ` border-r ${gridSize > 7 && smallView ? 'border-black' : `border-r-2 border-r-black`}`;
-                    else if (hasWallBetween(r,c,r,c+1)) borderStyles += ` border-r ${wallBorderThickness} border-r-black`; 
+                    else if (hasWallBetween(r,c,r,c+1)) borderStyles += ` border-r border-2 border-r-black`; 
                     else borderStyles += ` border-r ${pathBorder}`;
                     
                     cellClasses += ` ${borderStyles}`;

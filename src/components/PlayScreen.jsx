@@ -178,11 +178,8 @@ const PlayScreen = ({ userId, setScreen, gameMode, debugMode }) => {
             return;
         }
         
+        // 移動状態をすぐに設定してボタンを無効化
         setIsMoving(true);
-        setMessage("移動中...");
-        
-        // 2秒待機
-        await new Promise(resolve => setTimeout(resolve, 2000));
         
         const gameDocRef = doc(db, `artifacts/${appId}/public/data/labyrinthGames`, gameId);
         const { r: currentR, c: currentC } = effectivePlayerState.position;
@@ -209,8 +206,7 @@ const PlayScreen = ({ userId, setScreen, gameMode, debugMode }) => {
             return;
         }
         
-        // 壁チェック - 仕様書に基づく正確な壁判定
-        // 壁は「マスとマスの間」に存在し、移動方向に応じて適切な壁座標を計算する
+        // 壁チェックを移動開始前に実行
         const walls = mazeToPlayData?.walls || [];
         let hitWall = null;
         const isBlocked = walls.some(wall => {
@@ -256,7 +252,6 @@ const PlayScreen = ({ userId, setScreen, gameMode, debugMode }) => {
 
             // ぶつかった壁をrevealedPlayerWallsに追加（プレイヤーが発見した壁として記録）
             try {
-                const gameDocRef = doc(db, `artifacts/${appId}/public/data/labyrinthGames`, gameId);
                 const wallToReveal = {
                     type: hitWall.type,
                     r: hitWall.r,
@@ -286,6 +281,12 @@ const PlayScreen = ({ userId, setScreen, gameMode, debugMode }) => {
             }
             return;
         }
+        
+        // 壁チェックが通過した場合のみ移動処理を開始
+        setMessage("移動中...");
+        
+        // 2秒待機
+        await new Promise(resolve => setTimeout(resolve, 2000));
         
         try {
             // 四人対戦モードでのバトル発生チェック
