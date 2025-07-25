@@ -124,3 +124,32 @@ export const formatTime = (seconds) => {
     // 0埋めして2桁で表示
     return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
 };
+
+/**
+ * ユーザーネーム関連のユーティリティ関数
+ */
+
+/**
+ * ユーザーネームをローカルストレージに保存
+ * @param {string} username - 保存するユーザーネーム
+ */
+export const saveUsername = (username) => {
+    localStorage.setItem('labyrinth_username', username);
+};
+
+/**
+ * ローカルストレージからユーザーネームを取得
+ * @returns {string} 保存されているユーザーネーム（なければ空文字）
+ */
+export const getUsername = () => {
+    return localStorage.getItem('labyrinth_username') || '';
+};
+
+/**
+ * ユーザーネームの妥当性チェック
+ * @param {string} username - チェックするユーザーネーム
+ * @returns {boolean} 妥当かどうか
+ */
+export const isValidUsername = (username) => {
+    return username && username.trim().length > 0 && username.trim().length <= 20;
+};
