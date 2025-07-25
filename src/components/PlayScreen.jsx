@@ -1,8 +1,3 @@
-/**
- * プレイ画面コンポーネント
- * ゲーム進行中のメイン画面：プレイヤー移動、チャット、戦闘、目標管理など
- */
-
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
     doc, getDoc, updateDoc, serverTimestamp, arrayUnion, arrayRemove,
@@ -22,6 +17,8 @@ import BattleModal from './BattleModal';
 import GameOverModal from './GameOverModal';
 import { HelpOverlay } from './HelpOverlay';
 import ReviewModeScreen from './ReviewModeScreen';
+import ChatSection from './ChatSection';
+import SpeechTemplateModal from './SpeechTemplateModal';
 import {
     STANDARD_GRID_SIZE, EXTRA_GRID_SIZE, NEGOTIATION_TYPES, SABOTAGE_TYPES,
     DECLARATION_PHASE_DURATION, CHAT_PHASE_DURATION, RESULT_PUBLICATION_DURATION, ACTION_EXECUTION_DELAY,
@@ -66,6 +63,9 @@ const PlayScreen = ({ userId, setScreen, gameMode, debugMode }) => {
     
     // ヘルプオーバーレイ表示状態
     const [showHelpOverlay, setShowHelpOverlay] = useState(false);
+    
+    // 発言テンプレートモーダル表示状態
+    const [showSpeechTemplate, setShowSpeechTemplate] = useState(false);
     
     // 感想戦モード状態管理
     const [showReviewMode, setShowReviewMode] = useState(false);
@@ -1165,6 +1165,11 @@ const PlayScreen = ({ userId, setScreen, gameMode, debugMode }) => {
         }
     };
 
+    // 発言テンプレート選択時のハンドラー
+    const handleTemplateSelect = (template) => {
+        setChatInput(template);
+    };
+
     // 不足している関数の実装 - declareSelectedAction を追加
     const declareSelectedAction = useCallback(async () => {
         if (!selectedAction || myPlayerState?.hasDeclaredThisTurn || gameData?.currentExtraModePhase !== 'declaration') return;
@@ -1377,180 +1382,69 @@ const PlayScreen = ({ userId, setScreen, gameMode, debugMode }) => {
     }
 
     return (
-        <div className="max-w-7xl mx-auto p-4 bg-gray-100 min-h-screen">
+        <div className="w-full max-w-full mx-auto p-2 sm:p-4 bg-gray-100 min-h-screen">
             {/* デバッグモード時のプレイヤー切り替えUI */}
             <DebugPlayerSwitcher />
             
             {/* ヘッダー部分を簡素化 */}
-            <div className="bg-white rounded-lg shadow-md p-4 mb-4">
-                <div className="flex justify-between items-center">
-                    <h1 className="text-2xl font-bold text-gray-800">
+            <div className="bg-white rounded-lg shadow-md p-3 sm:p-4 mb-4">
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
+                    <h1 className="text-xl sm:text-2xl font-bold text-gray-800">
                         {gameType === 'standard' ? 'スタンダードモード (二人対戦)' : 'エクストラモード'}
-                        {debugMode && <span className="text-yellow-600 ml-2 text-lg">🔧 DEBUG</span>}
+                        {debugMode && <span className="text-yellow-600 ml-2 text-base sm:text-lg">🔧 DEBUG</span>}
                     </h1>
                     <button
                         onClick={handleExitButtonClick}
-                        className="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded"
+                        className="bg-red-500 hover:bg-red-600 text-white px-3 py-2 sm:px-4 rounded text-sm sm:text-base"
                     >
                         ホームに戻る
                     </button>
                 </div>
-                
-                {/* メッセージエリアのみ残す */}
-                {message && (
-                    <div className="mt-4 p-3 bg-yellow-50 rounded border-l-4 border-yellow-400">
-                        <p className="text-yellow-800 text-sm">{message}</p>
-                    </div>
-                )}
             </div>
 
             {/* メインコンテンツ：スタンダードモードとエクストラモードで分岐 */}
             {gameType === 'standard' ? (
-                // スタンダードモード（二人対戦）レスポンシブレイアウト: 左（相手作成・自分プレイ）・中央（操作・チャット）・右（自分作成・相手プレイ）
-                <div className="grid grid-cols-1 xl:grid-cols-12 gap-4">{/* レスポンシブ対応: xl以上で3列レイアウト */}
-                    {/* 左側：相手が作った、自分がプレイする迷路 */}
-                    <div className="xl:col-span-4 bg-white rounded-lg shadow-md p-4">
-                        <h2 className="text-lg font-semibold mb-4 text-center">
-                            🎮 攻略する迷宮
+                // スタンダードモード（二人対戦）レスポンシブレイアウト: 左（攻略中迷路・相手作成）・中央（操作・チャット）・右（自分作成・相手攻略）
+                <div className="grid grid-cols-1 lg:grid-cols-3 xl:grid-cols-12 gap-2 sm:gap-4 h-full min-h-[calc(100vh-200px)]">{/* レスポンシブ対応: lg以上で3列、xl以上で詳細レイアウト */}
+                    {/* 左側：自分が攻略する迷路（相手が作ったもの） */}
+                    <div className="lg:col-span-1 xl:col-span-4 bg-white rounded-lg shadow-md p-2 sm:p-4 h-fit">
+                        <h2 className="text-base sm:text-lg font-semibold mb-2 sm:mb-4 text-center">
+                            🎮 攻略中の迷宮（相手作成）
                         </h2>
                         
-                        {myCreatedMazeData ? (
-                            <div>
-                                {/* スタンダードモード - 自分が設定した迷宮 */}
-                                <MazeGrid
-                                    mazeData={myCreatedMazeData}
-                                    playerPosition={playerSolvingMyMaze?.position}
-                                    otherPlayers={playerSolvingMyMaze ? [playerSolvingMyMaze] : []}
-                                    showAllWalls={true}
-                                    onCellClick={() => {}}
-                                    gridSize={currentGridSize}
-                                    sharedWalls={[]}
-                                    highlightPlayer={false}
-                                    smallView={false}
-                                />
-                                {playerSolvingMyMaze && (
-                                    <div className="mt-3 p-2 bg-gray-50 rounded text-sm">
-                                        <p className="font-semibold text-gray-700">攻略者の状態:</p>
-                                        <p>位置: ({playerSolvingMyMaze.position?.r || 0}, {playerSolvingMyMaze.position?.c || 0})</p>
-                                        <p>スコア: {playerSolvingMyMaze.score || 0}pt</p>
-                                        {playerSolvingMyMaze.goalTime && (
-                                            <p className="text-green-600 font-semibold">ゴール達成！</p>
-                                        )}
-                                    </div>
-                                )}
-                            </div>
-                        ) : (
-                            <div className="flex items-center justify-center h-64 bg-gray-50 rounded">
-                                <div className="text-center">
-                                    <p className="text-gray-500 mb-2">迷宮データを読み込み中...</p>
-                                    <p className="text-xs text-gray-400">ゲームID: {gameId}</p>
-                                    <p className="text-xs text-gray-400">ユーザーID: {userId}</p>
-                                </div>
-                            </div>
-                        )}
-                    </div>
-
-                    {/* 中央：自分が攻略する迷宮 */}
-                    <div className="bg-white rounded-lg shadow-md p-4">
-                        <h2 className="text-lg font-semibold mb-4">
-                            攻略する迷宮
-                        </h2>
-                        
-                        {/* 現在のターン表示 */}
-                        <div className="mb-4 p-3 bg-blue-50 rounded-lg">
-                            <div className="flex items-center justify-between">
-                                <div>
-                                    <h4 className="font-semibold text-blue-700">現在のターン</h4>
-                                    <p className="text-sm text-blue-600">
-                                        {gameData?.currentTurnPlayerId === effectiveUserId ? 
-                                            <span className="font-bold text-green-600">あなた</span> : 
-                                            <span className="font-bold text-orange-600">相手</span>
-                                        } (ターン数: {gameData?.turnNumber || 1})
-                                    </p>
-                                </div>
-                                <div className="text-right text-sm">
-                                    <p className="text-blue-700">
-                                        {debugMode ? `プレイヤー ${effectiveUserId.substring(0,8)}...` : 'あなた'}の状態
-                                    </p>
-                                    <p className="text-blue-600">
-                                        位置: ({effectivePlayerState?.position?.r || 0}, {effectivePlayerState?.position?.c || 0})
-                                        <br />
-                                        スコア: {effectivePlayerState?.score || 0}pt
-                                    </p>
-                                </div>
-                            </div>
-                        </div>
-
-                        {/* 四人対戦モード：全プレイヤーのポイント表示 */}
-                        {gameData?.mode === '4player' && (
-                            <div className="mb-4 p-3 bg-yellow-50 rounded-lg">
-                                <h4 className="font-semibold text-yellow-700 mb-2">🏆 プレイヤーポイント</h4>
-                                <div className="space-y-1 text-sm">
-                                    {gameData.players?.map((playerId, index) => {
-                                        const playerState = gameData.playerStates?.[playerId];
-                                        const isCurrentPlayer = playerId === effectiveUserId;
-                                        const isCurrentTurn = gameData.currentTurnPlayerId === playerId;
-                                        const isGoaled = playerState?.goalTime;
-                                        
-                                        return (
-                                            <div 
-                                                key={playerId} 
-                                                className={`flex justify-between items-center p-2 rounded ${
-                                                    isCurrentPlayer ? 'bg-green-100 border border-green-300' :
-                                                    isCurrentTurn ? 'bg-blue-100 border border-blue-300' :
-                                                    'bg-white border border-gray-200'
-                                                }`}
-                                            >
-                                                <span className={isCurrentPlayer ? 'font-bold text-green-700' : 'text-gray-700'}>
-                                                    {isCurrentPlayer ? 'あなた' : `プレイヤー${index + 1}`}
-                                                    {isCurrentTurn && <span className="ml-1 text-blue-600">📍</span>}
-                                                    {isGoaled && <span className="ml-1 text-green-600">🏁</span>}
-                                                </span>
-                                                <span className={`font-semibold ${
-                                                    isCurrentPlayer ? 'text-green-700' : 'text-yellow-600'
-                                                }`}>
-                                                    {playerState?.score || 0}pt
-                                                </span>
-                                            </div>
-                                        );
-                                    })}
-                                </div>
-                            </div>
-                        )}
-                        
-                        {/* 移動方法説明 */}
-                        {isMyStandardTurn && (
-                            <div className="mb-4 p-3 bg-green-50 rounded-lg">
-                                <h4 className="font-semibold text-green-700 mb-2">🎮 移動方法</h4>
-                                <div className="text-sm text-green-600 space-y-1">
-                                    <p><strong>方法1:</strong> 右下の移動宣言ボタンを使用</p>
-                                    <p><strong>方法2:</strong> 迷路上の隣接するセルを直接クリック</p>
-                                    <p><strong>方法3:</strong> キーボードの矢印キー または WASD</p>
-                                </div>
-                            </div>
-                        )}
-
-                        {/* 迷路グリッド */}
                         {mazeToPlayData ? (
-                            <MazeGrid
-                                mazeData={mazeToPlayData}
-                                playerPosition={effectivePlayerState?.position}
-                                otherPlayers={gameData?.playerStates ? 
-                                    Object.entries(gameData.playerStates)
-                                        .filter(([pid]) => pid !== effectiveUserId)
-                                        .map(([pid, pState]) => ({ id: pid, position: pState.position })) 
-                                    : []
-                                }
-                                revealedCells={effectivePlayerState?.revealedCells || {}}
-                                revealedPlayerWalls={effectivePlayerState?.revealedWalls || []}
-                                onCellClick={handleCellClick}
-                                gridSize={currentGridSize}
-                                sharedWalls={sharedWalls}
-                                highlightPlayer={true}
-                                smallView={false}
-                            />
+                            <div>
+                                {/* 自分が攻略する迷路（相手作成・壁は見えない） */}
+                                <div className="aspect-square max-w-md mx-auto">
+                                    <MazeGrid
+                                        mazeData={mazeToPlayData}
+                                        playerPosition={effectivePlayerState?.position}
+                                        otherPlayers={gameData?.playerStates ? 
+                                            Object.entries(gameData.playerStates)
+                                                .filter(([pid]) => pid !== effectiveUserId)
+                                                .map(([pid, pState]) => ({ id: pid, position: pState.position })) 
+                                            : []
+                                        }
+                                        revealedCells={effectivePlayerState?.revealedCells || {}}
+                                        revealedPlayerWalls={effectivePlayerState?.revealedWalls || []}
+                                        onCellClick={handleCellClick}
+                                        gridSize={currentGridSize}
+                                        sharedWalls={sharedWalls}
+                                        highlightPlayer={true}
+                                        smallView={false}
+                                    />
+                                </div>
+                                <div className="mt-3 p-2 bg-blue-50 rounded text-sm">
+                                    <p className="font-semibold text-blue-700">あなたの状態:</p>
+                                    <p>位置: ({effectivePlayerState?.position?.r || 0}, {effectivePlayerState?.position?.c || 0})</p>
+                                    <p>スコア: {effectivePlayerState?.score || 0}pt</p>
+                                    {effectivePlayerState?.goalTime && (
+                                        <p className="text-green-600 font-semibold">ゴール達成！</p>
+                                    )}
+                                </div>
+                            </div>
                         ) : (
-                            <div className="flex items-center justify-center h-64 bg-gray-50 rounded">
+                            <div className="flex items-center justify-center h-48 sm:h-64 bg-gray-50 rounded">
                                 <div className="text-center">
                                     <p className="text-gray-500 mb-2">攻略迷路を読み込み中...</p>
                                     <p className="text-xs text-gray-400">割り当てられた迷路作成者: {myPlayerState?.assignedMazeOwnerId || "未割り当て"}</p>
@@ -1564,51 +1458,82 @@ const PlayScreen = ({ userId, setScreen, gameMode, debugMode }) => {
                         )}
                     </div>
 
-                    {/* 右：チャット＆移動宣言 */}
-                    <div className="space-y-4">
-                        {/* 上部：チャットエリア */}
-                        <div className="bg-white rounded-lg shadow-md p-4">
-                            <h4 className="text-lg font-semibold mb-3 flex items-center justify-between">
-                                <span className="flex items-center">
-                                    <MessageSquare size={18} className="mr-2"/> チャット
-                                </span>
-                                <button
-                                    className="ml-2 text-blue-500 hover:text-blue-700 text-xl focus:outline-none"
-                                    title="ヘルプ"
-                                    onClick={() => setShowHelpOverlay(true)}
-                                >
-                                    ❓
-                                </button>
-                            </h4>
-                            <div ref={chatLogRef} className="bg-gray-50 p-3 rounded-lg h-40 overflow-y-auto text-sm mb-3 border">
-                                {chatMessages.map(msg => (
-                                    <div key={msg.id} className={`mb-2 ${msg.senderId === 'system' ? 'text-blue-600 font-semibold' : ''}`}>
-                                        <span className="font-medium">{msg.senderName}:</span> {msg.text}
+                    {/* 中央：操作UI・チャット・ゲーム情報 */}
+                    <div className="lg:col-span-1 xl:col-span-4 space-y-2 sm:space-y-4 h-fit">
+                        {/* 現在のターン表示 */}
+                        <div className="bg-white rounded-lg shadow-md p-2 sm:p-4 mb-2 sm:mb-4">
+                            <div className="p-2 sm:p-3 bg-blue-50 rounded-lg">
+                                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
+                                    <div>
+                                        <h4 className="font-semibold text-blue-700 text-sm sm:text-base">現在のターン</h4>
+                                        <p className="text-xs sm:text-sm text-blue-600">
+                                            {gameData?.currentTurnPlayerId === effectiveUserId ? 
+                                                <span className="font-bold text-green-600">あなた</span> : 
+                                                <span className="font-bold text-orange-600">相手</span>
+                                            } (ターン数: {gameData?.turnNumber || 1})
+                                        </p>
                                     </div>
-                                ))}
+                                    <div className="text-left sm:text-right text-xs sm:text-sm">
+                                        <p className="text-blue-700">
+                                            {debugMode ? `プレイヤー ${effectiveUserId.substring(0,8)}...` : 'あなた'}の状態
+                                        </p>
+                                        <p className="text-blue-600">
+                                            位置: ({effectivePlayerState?.position?.r || 0}, {effectivePlayerState?.position?.c || 0})
+                                            <br />
+                                            スコア: {effectivePlayerState?.score || 0}pt
+                                        </p>
+                                    </div>
+                                </div>
                             </div>
-                            <div className="flex space-x-2">
-                                <input 
-                                    type="text" 
-                                    value={chatInput} 
-                                    onChange={(e) => setChatInput(e.target.value)}
-                                    onKeyPress={(e) => e.key === 'Enter' && handleSendChatMessage()}
-                                    className="flex-1 px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                    placeholder="メッセージを入力..."
-                                />
-                                <button 
-                                    onClick={() => handleSendChatMessage()}
-                                    className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg transition-colors"
-                                    disabled={!chatInput.trim()}
-                                >
-                                    <Send size={16}/>
-                                </button>
-                            </div>
+
+                            {/* 四人対戦モード：全プレイヤーのポイント表示 */}
+                            {gameData?.mode === '4player' && (
+                                <div className="mt-4 p-3 bg-yellow-50 rounded-lg">
+                                    <h4 className="font-semibold text-yellow-700 mb-2">🏆 プレイヤーポイント</h4>
+                                    <div className="space-y-1 text-sm">
+                                        {gameData.players?.map((playerId, index) => {
+                                            const playerState = gameData.playerStates?.[playerId];
+                                            const isCurrentPlayer = playerId === effectiveUserId;
+                                            const isCurrentTurn = gameData.currentTurnPlayerId === playerId;
+                                            const isGoaled = playerState?.goalTime;
+                                            
+                                            return (
+                                                <div 
+                                                    key={playerId} 
+                                                    className={`flex justify-between items-center p-2 rounded ${
+                                                        isCurrentPlayer ? 'bg-green-100 border border-green-300' :
+                                                        isCurrentTurn ? 'bg-blue-100 border border-blue-300' :
+                                                        'bg-white border border-gray-200'
+                                                    }`}
+                                                >
+                                                    <span className={isCurrentPlayer ? 'font-bold text-green-700' : 'text-gray-700'}>
+                                                        {isCurrentPlayer ? 'あなた' : `プレイヤー${index + 1}`}
+                                                        {isCurrentTurn && <span className="ml-1 text-blue-600">📍</span>}
+                                                        {isGoaled && <span className="ml-1 text-green-600">🏁</span>}
+                                                    </span>
+                                                    <span className={`font-semibold ${
+                                                        isCurrentPlayer ? 'text-green-700' : 'text-yellow-600'
+                                                    }`}>
+                                                        {playerState?.score || 0}pt
+                                                    </span>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                            )}
                         </div>
 
-                        {/* 下部：移動宣言エリア */}
-                        <div className="bg-white rounded-lg shadow-md p-4">
-                            <h4 className="text-lg font-semibold mb-3">移動宣言</h4>
+                        {/* 移動方法説明・移動操作 */}
+                        <div className="bg-white rounded-lg shadow-md p-2 sm:p-4 mb-2 sm:mb-4">
+                            {/* メッセージエリア */}
+                            {message && (
+                                <div className="mb-3 p-3 bg-yellow-50 rounded border-l-4 border-yellow-400">
+                                    <p className="text-yellow-800 text-sm">{message}</p>
+                                </div>
+                            )}
+                            
+                            <h4 className="text-base sm:text-lg font-semibold mb-2 sm:mb-3">移動操作</h4>
                             
                             {isMyStandardTurn && !inStandardBattleBetting ? (
                                 <div className="space-y-3">
@@ -1618,43 +1543,57 @@ const PlayScreen = ({ userId, setScreen, gameMode, debugMode }) => {
                                         <p className="text-sm text-green-500">移動を選択してください</p>
                                     </div>
                                     
+                                    {/* 移動方法説明 */}
+                                    <div className="p-3 bg-blue-50 rounded-lg">
+                                        <h5 className="font-semibold text-blue-700 mb-2">🎮 移動方法</h5>
+                                        <div className="text-sm text-blue-600 space-y-1">
+                                            <p><strong>方法1:</strong> 下の移動ボタンを使用</p>
+                                            <p><strong>方法2:</strong> 左の迷路上の隣接セルを直接クリック</p>
+                                            <p><strong>方法3:</strong> キーボードの矢印キー または WASD</p>
+                                        </div>
+                                    </div>
+                                    
                                     {/* 方向ボタン */}
-                                    <div className="grid grid-cols-3 gap-2 max-w-48 mx-auto">
+                                    <div className="grid grid-cols-3 gap-1 sm:gap-2 max-w-36 sm:max-w-48 mx-auto">
                                         <div></div>
                                         <button 
-                                            onClick={() => handleStandardMoveImproved('up')}
-                                            className="bg-blue-500 hover:bg-blue-600 text-white p-3 rounded-lg flex items-center justify-center transition-colors shadow-md"
+                                            onClick={() => handleStandardMove('up')}
+                                            disabled={isMoving}
+                                            className="bg-blue-500 hover:bg-blue-600 disabled:bg-gray-300 text-white p-2 sm:p-3 rounded-lg flex items-center justify-center transition-colors shadow-md"
                                             title="上に移動 (W キー)"
                                         >
-                                            <ArrowUp size={20}/>
+                                            <ArrowUp size={16} className="sm:w-5 sm:h-5"/>
                                         </button>
                                         <div></div>
                                         
                                         <button 
-                                            onClick={() => handleStandardMoveImproved('left')}
-                                            className="bg-blue-500 hover:bg-blue-600 text-white p-3 rounded-lg flex items-center justify-center transition-colors shadow-md"
+                                            onClick={() => handleStandardMove('left')}
+                                            disabled={isMoving}
+                                            className="bg-blue-500 hover:bg-blue-600 disabled:bg-gray-300 text-white p-2 sm:p-3 rounded-lg flex items-center justify-center transition-colors shadow-md"
                                             title="左に移動 (A キー)"
                                         >
-                                            <ArrowLeft size={20}/>
+                                            <ArrowLeft size={16} className="sm:w-5 sm:h-5"/>
                                         </button>
-                                        <div className="bg-gray-200 rounded-lg p-3 flex items-center justify-center">
-                                            <User size={20} className="text-gray-500"/>
+                                        <div className="bg-gray-200 rounded-lg p-2 sm:p-3 flex items-center justify-center">
+                                            <User size={16} className="sm:w-5 sm:h-5 text-gray-500"/>
                                         </div>
                                         <button 
-                                            onClick={() => handleStandardMoveImproved('right')}
-                                            className="bg-blue-500 hover:bg-blue-600 text-white p-3 rounded-lg flex items-center justify-center transition-colors shadow-md"
+                                            onClick={() => handleStandardMove('right')}
+                                            disabled={isMoving}
+                                            className="bg-blue-500 hover:bg-blue-600 disabled:bg-gray-300 text-white p-2 sm:p-3 rounded-lg flex items-center justify-center transition-colors shadow-md"
                                             title="右に移動 (D キー)"
                                         >
-                                            <ArrowRight size={20}/>
+                                            <ArrowRight size={16} className="sm:w-5 sm:h-5"/>
                                         </button>
                                         
                                         <div></div>
                                         <button 
-                                            onClick={() => handleStandardMoveImproved('down')}
-                                            className="bg-blue-500 hover:bg-blue-600 text-white p-3 rounded-lg flex items-center justify-center transition-colors shadow-md"
+                                            onClick={() => handleStandardMove('down')}
+                                            disabled={isMoving}
+                                            className="bg-blue-500 hover:bg-blue-600 disabled:bg-gray-300 text-white p-2 sm:p-3 rounded-lg flex items-center justify-center transition-colors shadow-md"
                                             title="下に移動 (S キー)"
                                         >
-                                            <ArrowDown size={20}/>
+                                            <ArrowDown size={16} className="sm:w-5 sm:h-5"/>
                                         </button>
                                         <div></div>
                                     </div>
@@ -1662,55 +1601,6 @@ const PlayScreen = ({ userId, setScreen, gameMode, debugMode }) => {
                                     {/* キーボードヒント */}
                                     <div className="text-center text-xs text-gray-500 bg-gray-50 p-2 rounded">
                                         💡 キーボード: ↑↓←→ または WASD でも移動可能
-                                    </div>
-                                    
-                                    {/* プレイヤー情報 */}
-                                    <div className="pt-3 border-t">
-                                        <h5 className="font-semibold mb-2 text-sm">プレイヤー状況</h5>
-                                        <div className="space-y-2">
-                                            {gameData?.players?.map(playerId => {
-                                                const player = gameData.playerStates[playerId];
-                                                const isCurrentPlayer = playerId === userId;
-                                                const isActivePlayer = gameData.currentTurnPlayerId === playerId;
-                                                
-                                                return (
-                                                    <div 
-                                                        key={playerId}
-                                                        className={`p-2 rounded border text-sm ${
-                                                            isCurrentPlayer ? 'border-blue-300 bg-blue-50' : 'border-gray-200 bg-gray-50'
-                                                        } ${isActivePlayer ? 'ring-2 ring-green-300' : ''}`}
-                                                    >
-                                                        <div className="flex items-center justify-between">
-                                                            <div className="flex items-center space-x-1">
-                                                                <User size={14} className={isCurrentPlayer ? 'text-blue-600' : 'text-gray-500'}/>
-                                                                <span className={`font-medium ${isCurrentPlayer ? 'text-blue-800' : 'text-gray-700'}`}>
-                                                                    {isCurrentPlayer ? 'あなた' : '相手'}
-                                                                </span>
-                                                                {isActivePlayer && (
-                                                                    <span className="bg-green-500 text-white text-xs px-1 py-0.5 rounded">
-                                                                        ターン中
-                                                                    </span>
-                                                                )}
-                                                            </div>
-                                                            <div className="text-right text-xs">
-                                                                <div>スコア: {player?.score || 0}pt</div>
-                                                                <div className="text-gray-500">
-                                                                    位置: ({player?.position?.r || 0}, {player?.position?.c || 0})
-                                                                </div>
-                                                            </div>
-                                                        </div>
-                                                        
-                                                        {/* ゴール状態表示 */}
-                                                        {player?.goalTime && (
-                                                            <div className="mt-1 flex items-center space-x-1">
-                                                                <Trophy size={12} className="text-yellow-500"/>
-                                                                <span className="text-xs text-yellow-600 font-semibold">ゴール達成！</span>
-                                                            </div>
-                                                        )}
-                                                    </div>
-                                                );
-                                            })}
-                                        </div>
                                     </div>
                                 </div>
                             ) : inStandardBattleBetting ? (
@@ -1724,16 +1614,77 @@ const PlayScreen = ({ userId, setScreen, gameMode, debugMode }) => {
                                     <Clock className="mx-auto mb-2 text-gray-500" size={24}/>
                                     <p className="text-gray-600 font-semibold">相手のターン</p>
                                     <p className="text-sm text-gray-500">相手の移動を待っています...</p>
+                                    {isMoving && (
+                                        <p className="text-blue-600 mt-2">移動中...</p>
+                                    )}
                                 </div>
                             )}
                         </div>
+
+                        {/* チャットエリア */}
+                        <ChatSection 
+                            chatMessages={chatMessages}
+                            chatInput={chatInput}
+                            setChatInput={setChatInput}
+                            handleSendChatMessage={handleSendChatMessage}
+                            onShowHelp={() => setShowHelpOverlay(true)}
+                            onShowTemplate={() => setShowSpeechTemplate(true)}
+                            chatLogRef={chatLogRef}
+                            title="チャット"
+                        />
+                    </div>
+
+                    {/* 右側：自分が作った迷路（相手が攻略中・壁が全て見える） */}
+                    <div className="lg:col-span-1 xl:col-span-4 bg-white rounded-lg shadow-md p-2 sm:p-4 h-fit">
+                        <h2 className="text-base sm:text-lg font-semibold mb-2 sm:mb-4 text-center">
+                            🏗️ 自分の迷宮（相手攻略中）
+                        </h2>
+                        
+                        {myCreatedMazeData ? (
+                            <div>
+                                {/* 自分が作成した迷路（壁が全て見える） */}
+                                <div className="aspect-square max-w-md mx-auto">
+                                    <MazeGrid
+                                        mazeData={myCreatedMazeData}
+                                        playerPosition={playerSolvingMyMaze?.position}
+                                        otherPlayers={playerSolvingMyMaze ? [playerSolvingMyMaze] : []}
+                                        showAllWalls={true}
+                                        onCellClick={() => {}}
+                                        gridSize={currentGridSize}
+                                        sharedWalls={[]}
+                                        highlightPlayer={false}
+                                        smallView={false}
+                                    />
+                                </div>
+                                {playerSolvingMyMaze && (
+                                    <div className="mt-3 p-2 bg-orange-50 rounded text-sm">
+                                        <p className="font-semibold text-orange-700">攻略者の状態:</p>
+                                        <p>位置: ({playerSolvingMyMaze.position?.r || 0}, {playerSolvingMyMaze.position?.c || 0})</p>
+                                        <p>スコア: {playerSolvingMyMaze.score || 0}pt</p>
+                                        {playerSolvingMyMaze.goalTime && (
+                                            <p className="text-green-600 font-semibold">相手がゴール達成！</p>
+                                        )}
+                                    </div>
+                                )}
+                            </div>
+                        ) : (
+                            <div className="flex items-center justify-center h-48 sm:h-64 bg-gray-50 rounded">
+                                <div className="text-center">
+                                    <p className="text-gray-500 mb-2">自分の迷宮データを読み込み中...</p>
+                                    <p className="text-xs text-gray-400">ゲームID: {gameId}</p>
+                                    <p className="text-xs text-gray-400">ユーザーID: {userId}</p>
+                                </div>
+                            </div>
+                        )}
+
+
                     </div>
                 </div>
             ) : (
-                // エクストラモードのレイアウト（既存のまま）
+                // エクストラモードのレスポンシブレイアウト
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
                     {/* メイン迷路エリア */}
-                    <div className="lg:col-span-2">
+                    <div className="lg:col-span-2 order-1 lg:order-1">
                         <div className="bg-white rounded-lg shadow-md p-4">
                             <h2 className="text-lg font-semibold mb-4">
                                 迷路 (エクストラモード)
@@ -1771,7 +1722,7 @@ const PlayScreen = ({ userId, setScreen, gameMode, debugMode }) => {
                     </div>
 
                     {/* サイドバー */}
-                    <div className="space-y-4">
+                    <div className="order-2 lg:order-2 space-y-4">
                         {/* エクストラモードのアクション */}
                         <div className="bg-white rounded-lg shadow-md p-4"> 
                             <h3 className="text-lg font-semibold mb-3">エクストラアクション</h3>
@@ -1872,44 +1823,16 @@ const PlayScreen = ({ userId, setScreen, gameMode, debugMode }) => {
                         </div>
 
                         {/* チャットエリア */}
-                        <div className="bg-white rounded-lg shadow-md p-4">
-                            <h4 className="text-lg font-semibold mb-3 flex items-center justify-between">
-                                <span className="flex items-center">
-                                    <MessageSquare size={18} className="mr-2"/> チャット
-                                </span>
-                                <button
-                                    className="ml-2 text-blue-500 hover:text-blue-700 text-xl focus:outline-none"
-                                    title="ヘルプ"
-                                    onClick={() => setShowHelpOverlay(true)}
-                                >
-                                    ❓
-                                </button>
-                            </h4>
-                            <div ref={chatLogRef} className="bg-gray-50 p-3 rounded-lg h-32 overflow-y-auto text-sm mb-3 border">
-                                {chatMessages.map(msg => (
-                                    <div key={msg.id} className={`mb-2 ${msg.senderId === 'system' ? 'text-blue-600 font-semibold' : ''}`}>
-                                        <span className="font-medium">{msg.senderName}:</span> {msg.text}
-                                    </div>
-                                ))}
-                            </div>
-                            <div className="flex space-x-2">
-                                <input 
-                                    type="text" 
-                                    value={chatInput} 
-                                    onChange={(e) => setChatInput(e.target.value)}
-                                    onKeyPress={(e) => e.key === 'Enter' && handleSendChatMessage()}
-                                    className="flex-1 px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                    placeholder="メッセージを入力..."
-                                />
-                                <button 
-                                    onClick={() => handleSendChatMessage()}
-                                    className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg transition-colors"
-                                    disabled={!chatInput.trim()}
-                                >
-                                    <Send size={16}/>
-                                </button>
-                            </div>
-                        </div>
+                        <ChatSection 
+                            chatMessages={chatMessages}
+                            chatInput={chatInput}
+                            setChatInput={setChatInput}
+                            handleSendChatMessage={handleSendChatMessage}
+                            onShowHelp={() => setShowHelpOverlay(true)}
+                            onShowTemplate={() => setShowSpeechTemplate(true)}
+                            chatLogRef={chatLogRef}
+                            title="チャット"
+                        />
                     </div>
                 </div>
             )}
@@ -1941,6 +1864,15 @@ const PlayScreen = ({ userId, setScreen, gameMode, debugMode }) => {
             {/* ヘルプオーバーレイ ポップアップ */}
             {showHelpOverlay && (
                 <HelpOverlay page={1} onClose={() => setShowHelpOverlay(false)} />
+            )}
+
+            {/* 発言テンプレートモーダル */}
+            {showSpeechTemplate && (
+                <SpeechTemplateModal
+                    isOpen={showSpeechTemplate}
+                    onClose={() => setShowSpeechTemplate(false)}
+                    onSelectTemplate={handleTemplateSelect}
+                />
             )}
 
             {/* 退出確認ダイアログ */}
