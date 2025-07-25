@@ -3,7 +3,7 @@
  * ゲーム終了後の振り返り画面：両者の迷路全体図、通った場所、ミスした場所の確認
  */
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { ArrowLeft, Eye, Map, MessageSquare, RotateCcw, Send, Users } from 'lucide-react';
 import { collection, addDoc, query, orderBy, limit, onSnapshot, serverTimestamp } from 'firebase/firestore';
 import { db, appId } from '../firebase';
@@ -16,9 +16,10 @@ import MazeGrid from './MazeGrid';
  * @param {Object} mazeData - 自分が攻略した迷路データ
  * @param {Object} allMazeData - 全プレイヤーの迷路データ
  * @param {string} userId - 現在のユーザーID
+ * @param {string} gameId - ゲームID
  * @param {Function} onExit - 感想戦モードを終了する関数
  */
-const ReviewModeScreen = ({ gameData, mazeData, allMazeData = {}, userId, onExit }) => {
+const ReviewModeScreen = ({ gameData, mazeData, allMazeData = {}, userId, gameId, onExit }) => {
     const [selectedView, setSelectedView] = useState('both'); // 'both', 'player1', 'player2'
     const [chatMessages, setChatMessages] = useState([]);
     const [chatInput, setChatInput] = useState("");
@@ -34,13 +35,29 @@ const ReviewModeScreen = ({ gameData, mazeData, allMazeData = {}, userId, onExit
     });
     
     // 現在表示中の迷路データを取得
-    const currentDisplayMaze = allMazeData[selectedMazeOwner] || mazeData;
+    const currentDisplayMaze = useMemo(() => {
+        console.log("🔍 [ReviewMode Debug] allMazeData:", allMazeData);
+        console.log("🔍 [ReviewMode Debug] selectedMazeOwner:", selectedMazeOwner);
+        console.log("🔍 [ReviewMode Debug] mazeData:", mazeData);
+        
+        const maze = allMazeData[selectedMazeOwner] || mazeData;
+        console.log("🔍 [ReviewMode Debug] currentDisplayMaze:", maze);
+        
+        return maze;
+    }, [allMazeData, selectedMazeOwner, mazeData]);
     
+    // チャットの自動スクロール
+    useEffect(() => {
+        if (chatLogRef.current) {
+            chatLogRef.current.scrollTop = chatLogRef.current.scrollHeight;
+        }
+    }, [chatMessages]);
+
     // チャットメッセージの読み込み
     useEffect(() => {
-        if (!gameData?.id) return;
+        if (!gameId) return;
         
-        const chatCollRef = collection(db, `artifacts/${appId}/public/data/labyrinthGames/${gameData.id}/reviewChatMessages`);
+        const chatCollRef = collection(db, `artifacts/${appId}/public/data/labyrinthGames/${gameId}/chatMessages`);
         const chatQuery = query(chatCollRef, orderBy('timestamp', 'asc'), limit(100));
         
         const unsubscribe = onSnapshot(chatQuery, (snapshot) => {
@@ -52,13 +69,13 @@ const ReviewModeScreen = ({ gameData, mazeData, allMazeData = {}, userId, onExit
         });
         
         return () => unsubscribe();
-    }, [gameData?.id]);
+    }, [gameId]);
 
     // チャットメッセージ送信
     const handleSendChatMessage = async () => {
-        if (!chatInput.trim() || !gameData?.id) return;
+        if (!chatInput.trim() || !gameId) return;
         
-        const chatCollRef = collection(db, `artifacts/${appId}/public/data/labyrinthGames/${gameData.id}/reviewChatMessages`);
+        const chatCollRef = collection(db, `artifacts/${appId}/public/data/labyrinthGames/${gameId}/chatMessages`);
         
         try {
             await addDoc(chatCollRef, {
@@ -95,7 +112,12 @@ const ReviewModeScreen = ({ gameData, mazeData, allMazeData = {}, userId, onExit
                         感想戦モード - 全体振り返り
                     </h1>
                     <button
-                        onClick={onExit}
+                        onClick={() => {
+                            console.log("🚪 [ReviewMode] Exit button clicked");
+                            if (onExit) {
+                                onExit();
+                            }
+                        }}
                         className="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded flex items-center"
                     >
                         <ArrowLeft size={16} className="mr-2"/>
@@ -164,8 +186,17 @@ const ReviewModeScreen = ({ gameData, mazeData, allMazeData = {}, userId, onExit
                             </div>
                         </div>
                         
-                        {currentDisplayMaze && (
+                        {currentDisplayMaze && currentDisplayMaze.walls ? (
                             <div className="relative">
+                                {/* デバッグ情報 */}
+                                {process.env.NODE_ENV === 'development' && (
+                                    <div className="mb-2 p-2 bg-yellow-50 rounded text-xs">
+                                        <p>総壁数: {currentDisplayMaze.walls?.length || 0}</p>
+                                        <p>アクティブ壁数: {(currentDisplayMaze.walls || []).filter(w => w.active === true).length}</p>
+                                        <p>迷路サイズ: {currentDisplayMaze.gridSize || 6}x{currentDisplayMaze.gridSize || 6}</p>
+                                    </div>
+                                )}
+                                
                                 {/* 座標ラベル */}
                                 <div className="mb-2">
                                     <div className="flex justify-center">
@@ -191,7 +222,7 @@ const ReviewModeScreen = ({ gameData, mazeData, allMazeData = {}, userId, onExit
                                     <MazeGrid
                                         mazeData={{
                                             ...currentDisplayMaze,
-                                            walls: currentDisplayMaze.walls || [] // 全ての壁を表示
+                                            walls: (currentDisplayMaze.walls || []).filter(wall => wall.active === true) // activeな壁のみ表示
                                         }}
                                         playerPosition={currentPlayerState?.position}
                                         otherPlayers={players.filter(p => p !== userId).map(p => ({
@@ -200,9 +231,9 @@ const ReviewModeScreen = ({ gameData, mazeData, allMazeData = {}, userId, onExit
                                             name: p === userId ? currentUserName : `プレイヤー${players.indexOf(p) + 1}`
                                         }))}
                                         revealedCells={currentPlayerState?.revealedCells || {}}
-                                        revealedPlayerWalls={currentDisplayMaze.walls || []} // 全ての壁を表示
+                                        revealedPlayerWalls={(currentDisplayMaze.walls || []).filter(wall => wall.active === true)} // activeな壁のみ表示
                                         onCellClick={() => {}}
-                                        gridSize={6}
+                                        gridSize={currentDisplayMaze.gridSize || 6}
                                         sharedWalls={[]}
                                         highlightPlayer={true}
                                         smallView={false}
@@ -217,17 +248,21 @@ const ReviewModeScreen = ({ gameData, mazeData, allMazeData = {}, userId, onExit
                                     </h4>
                                     <div className="text-sm text-blue-700 space-y-1">
                                         <p>• 総壁数: {currentDisplayMaze.walls?.length || 0}個</p>
+                                        <p>• アクティブ壁数: {(currentDisplayMaze.walls || []).filter(w => w.active === true).length}個</p>
                                         <p>• ゴール位置: ({currentDisplayMaze.goal?.r || 0}, {currentDisplayMaze.goal?.c || 0})</p>
                                         <p>• 作成者: {selectedMazeOwner === userId ? currentUserName : `プレイヤー${players.indexOf(selectedMazeOwner) + 1}`}</p>
                                     </div>
                                 </div>
                             </div>
-                        )}
-                        
-                        {!currentDisplayMaze && (
+                        ) : (
                             <div className="text-center py-8 text-gray-500">
                                 <Map size={48} className="mx-auto mb-4 opacity-50"/>
                                 <p>迷路データが見つかりません</p>
+                                <p className="text-sm mt-2">
+                                    デバッグ情報: 
+                                    currentDisplayMaze={currentDisplayMaze ? '存在' : 'null'}, 
+                                    walls={currentDisplayMaze?.walls ? `${currentDisplayMaze.walls.length}個` : 'null'}
+                                </p>
                             </div>
                         )}
                         
@@ -347,7 +382,7 @@ const ReviewModeScreen = ({ gameData, mazeData, allMazeData = {}, userId, onExit
                         <h4 className="font-semibold text-gray-700 mb-2">迷路の特徴</h4>
                         <ul className="text-sm text-gray-600 space-y-1">
                             <li>• 総壁数: {currentDisplayMaze?.walls?.length || 0}個</li>
-                            <li>• 迷路複雑度: 中程度</li>
+                            <li>• アクティブ壁数: {(currentDisplayMaze?.walls || []).filter(w => w.active === true).length}個</li>
                             <li>• ゴール到達率: {players.filter(p => gameData.playerStates[p]?.goalTime).length}/{players.length}</li>
                         </ul>
                     </div>

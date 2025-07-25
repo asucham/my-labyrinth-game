@@ -1821,7 +1821,10 @@ const PlayScreen = ({ userId, setScreen, gameMode, debugMode }) => {
                                 {/* 自分が作成した迷路（壁が全て見える） */}
                                 <div className="aspect-square max-w-md mx-auto">
                                     <MazeGrid
-                                        mazeData={myCreatedMazeData}
+                                        mazeData={{
+                                            ...myCreatedMazeData,
+                                            walls: (myCreatedMazeData.walls || []).filter(w => w.active === true)
+                                        }}
                                         playerPosition={playerSolvingMyMaze?.position}
                                         otherPlayers={playerSolvingMyMaze ? [playerSolvingMyMaze] : []}
                                         showAllWalls={true}
@@ -2098,6 +2101,7 @@ const PlayScreen = ({ userId, setScreen, gameMode, debugMode }) => {
                     mazeData={mazeToPlayData}
                     allMazeData={gameData?.mazes || {}}
                     userId={userId}
+                    gameId={gameId}
                     onExit={() => {
                         setShowReviewMode(false);
                         setScreen('lobby');

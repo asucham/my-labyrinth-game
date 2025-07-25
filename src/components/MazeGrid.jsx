@@ -167,10 +167,10 @@ const MazeGrid = ({
         
         // 壁の存在を確認（activeフラグもチェック）
         const definingWall = wallsToConsider?.find(w => 
-            w.type === wallType && w.r === wallR && w.c === wallC && w.active !== false
+            w.type === wallType && w.r === wallR && w.c === wallC && w.active === true
         );
         const sharedWall = sharedWallsFromAllies?.find(w => 
-            w.type === wallType && w.r === wallR && w.c === wallC && w.active !== false
+            w.type === wallType && w.r === wallR && w.c === wallC && w.active === true
         );
 
         // 表示モードに応じた壁の可視性判定
@@ -178,7 +178,7 @@ const MazeGrid = ({
         if (showAllWalls) return !!definingWall || !!sharedWall;
         
         const revealedWall = revealedPlayerWalls.find(w => 
-            w.type === wallType && w.r === wallR && w.c === wallC && w.active !== false
+            w.type === wallType && w.r === wallR && w.c === wallC && w.active === true
         );
         return !!revealedWall || !!sharedWall;
     };
