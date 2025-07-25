@@ -193,27 +193,34 @@ const PlayScreen = ({ userId, setScreen, gameMode, debugMode }) => {
             return;
         }
         
-        // 壁チェック - 実際の迷路の壁構造をチェック
+        // 壁チェック - 仕様書に基づく正確な壁判定
+        // 壁は「マスとマスの間」に存在し、移動方向に応じて適切な壁座標を計算する
         const walls = mazeToPlayData?.walls || [];
         let hitWall = null;
         const isBlocked = walls.some(wall => {
+            if (!wall.active) return false; // 非アクティブな壁は無視
+            
             if (wall.type === 'horizontal') {
                 // 水平壁：上下移動をブロック
-                if (direction === 'up' && wall.r === currentR && wall.c === currentC) {
+                // 上に移動する場合：現在位置の上側の水平壁をチェック
+                if (direction === 'up' && wall.r === currentR - 1 && wall.c === currentC) {
                     hitWall = wall;
                     return true;
                 }
-                if (direction === 'down' && wall.r === newR && wall.c === newC) {
+                // 下に移動する場合：現在位置の下側の水平壁をチェック
+                if (direction === 'down' && wall.r === currentR && wall.c === currentC) {
                     hitWall = wall;
                     return true;
                 }
             } else if (wall.type === 'vertical') {
                 // 垂直壁：左右移動をブロック
-                if (direction === 'left' && wall.r === currentR && wall.c === currentC) {
+                // 左に移動する場合：現在位置の左側の垂直壁をチェック
+                if (direction === 'left' && wall.r === currentR && wall.c === currentC - 1) {
                     hitWall = wall;
                     return true;
                 }
-                if (direction === 'right' && wall.r === currentR && wall.c === newC) {
+                // 右に移動する場合：現在位置の右側の垂直壁をチェック
+                if (direction === 'right' && wall.r === currentR && wall.c === currentC) {
                     hitWall = wall;
                     return true;
                 }
@@ -222,7 +229,7 @@ const PlayScreen = ({ userId, setScreen, gameMode, debugMode }) => {
         });
         
         if (isBlocked && hitWall) {
-            // 壁にぶつかった場合、その壁を記録
+            // 壁にぶつかった場合、その壁を記録（仕様書：壁にぶつかると壁が表示される）
             setHitWalls(prev => {
                 const wallKey = `${hitWall.type}-${hitWall.r}-${hitWall.c}`;
                 if (!prev.some(w => `${w.type}-${w.r}-${w.c}` === wallKey)) {
@@ -230,8 +237,37 @@ const PlayScreen = ({ userId, setScreen, gameMode, debugMode }) => {
                 }
                 return prev;
             });
-            setMessage("壁に阻まれて移動できません。");
+
+            // ぶつかった壁をrevealedPlayerWallsに追加（プレイヤーが発見した壁として記録）
+            try {
+                const gameDocRef = doc(db, `artifacts/${appId}/public/data/labyrinthGames`, gameId);
+                const wallToReveal = {
+                    type: hitWall.type,
+                    r: hitWall.r,
+                    c: hitWall.c,
+                    active: true,
+                    discoveredAt: new Date().toISOString()
+                };
+                
+                // revealedWallsに追加
+                updateDoc(gameDocRef, {
+                    [`playerStates.${effectiveUserId}.revealedWalls`]: arrayUnion(wallToReveal)
+                }).catch(error => {
+                    console.error("Error updating revealed walls:", error);
+                });
+            } catch (error) {
+                console.error("Error recording discovered wall:", error);
+            }
+
+            setMessage(`壁に阻まれて移動できません。壁を発見しました！`);
             setIsMoving(false);
+            
+            // 仕様書：壁にぶつかるとターン終了
+            if (gameType === 'standard') {
+                setTimeout(() => {
+                    advanceStandardTurn();
+                }, 1500);
+            }
             return;
         }
         
@@ -979,17 +1015,19 @@ const PlayScreen = ({ userId, setScreen, gameMode, debugMode }) => {
             return;
         }
         
-        // 壁チェック - 実際の迷路の壁構造をチェック
+        // 壁チェック - 仕様書に基づく正確な壁判定
         const walls = mazeToPlayData?.walls || [];
         const isBlocked = walls.some(wall => {
+            if (!wall.active) return false; // 非アクティブな壁は無視
+            
             if (wall.type === 'horizontal') {
                 // 水平壁：上下移動をブロック
-                if (direction === 'up' && wall.r === currentR && wall.c === currentC) return true;
-                if (direction === 'down' && wall.r === newR && wall.c === newC) return true;
+                if (direction === 'up' && wall.r === currentR - 1 && wall.c === currentC) return true;
+                if (direction === 'down' && wall.r === currentR && wall.c === currentC) return true;
             } else if (wall.type === 'vertical') {
                 // 垂直壁：左右移動をブロック
-                if (direction === 'left' && wall.r === currentR && wall.c === currentR) return true;
-                if (direction === 'right' && wall.r === currentR && wall.c === newC) return true;
+                if (direction === 'left' && wall.r === currentR && wall.c === currentC - 1) return true;
+                if (direction === 'right' && wall.r === currentR && wall.c === currentC) return true;
             }
             return false;
         });
@@ -1023,14 +1061,26 @@ const PlayScreen = ({ userId, setScreen, gameMode, debugMode }) => {
             
             await updateDoc(gameDocRef, updates);
             
-            // スタンダードモード：移動後にターン進行
-            setTimeout(() => {
-                advanceStandardTurn();
-            }, 1500);
+            // 仕様書：移動成功の場合、連続移動が可能
+            // ただし、ゴール到達時は例外
+            if (mazeToPlayData && newR === mazeToPlayData.goal.r && newC === mazeToPlayData.goal.c) {
+                // ゴール到達時はゲーム終了処理
+                if (gameType === 'standard') {
+                    setTimeout(() => {
+                        advanceStandardTurn();
+                    }, 1500);
+                }
+            } else {
+                // 移動成功時は連続移動可能状態を維持
+                // プレイヤーは次の移動を選択できる
+                setIsMoving(false);
+                // ターンは継続（壁にぶつかるまで移動可能）
+            }
             
         } catch (error) {
             console.error("Error moving:", error);
             setMessage("移動に失敗しました。");
+            setIsMoving(false);
         }
     };
 
@@ -1432,6 +1482,7 @@ const PlayScreen = ({ userId, setScreen, gameMode, debugMode }) => {
                                         sharedWalls={sharedWalls}
                                         highlightPlayer={true}
                                         smallView={false}
+                                        showAllPlayerPositions={gameType === 'standard'} // 2人対戦では相手位置を常に表示
                                     />
                                 </div>
                                 <div className="mt-3 p-2 bg-blue-50 rounded text-sm">

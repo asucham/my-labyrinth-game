@@ -98,11 +98,11 @@ const MazeGrid = ({
             cellPlayerIcons.push(<User key="mainPlayer" size={iconSize} className="text-white z-10" />);
         }
         
-        // 全プレイヤー位置表示モードの場合
+        // 全プレイヤー位置表示モードの場合（2人対戦モードで使用）
         if (showAllPlayerPositions && !smallView) {
             otherPlayers.forEach(p => {
-                if (p.position.r === r && p.position.c === c && (!playerPosition || p.id !== playerPosition.id) ) {
-                     cellPlayerIcons.push(<User key={p.id} size={iconSize * 0.7} className="text-orange-400 opacity-90 absolute" title={p.id.substring(0,5)} style={{left: `${Math.random()*20+40}%`, top: `${Math.random()*20+40}%`}} />);
+                if (p.position && p.position.r === r && p.position.c === c && (!playerPosition || p.id !== playerPosition.id)) {
+                     cellPlayerIcons.push(<User key={p.id} size={iconSize * 0.8} className="text-orange-500 opacity-90 absolute" title={`相手プレイヤー: ${p.id.substring(0,5)}`} style={{left: `${Math.random()*20+30}%`, top: `${Math.random()*20+30}%`}} />);
                 }
             });
         } else {
@@ -114,7 +114,7 @@ const MazeGrid = ({
             }
             if (playersOnThisCell.length > 0 && !smallView) {
                 playersOnThisCell.forEach(p => {
-                    if (!highlightPlayer || !playerPosition || playerPosition.r !== r || playerPosition.c !== c) {
+                    if (p.position && (!highlightPlayer || !playerPosition || playerPosition.r !== r || playerPosition.c !== c)) {
                          if (!alliedPlayersPos.find(ap => ap.id === p.id && ap.r === r && ap.c ===c))
                             cellPlayerIcons.push(<User key={p.id} size={iconSize * 0.8} className="text-purple-400 opacity-70 absolute" title={p.id.substring(0,5)} />);
                     }
@@ -136,6 +136,7 @@ const MazeGrid = ({
 
     /**
      * 2つのセル間に壁があるかどうかを判定する関数
+     * 仕様書に基づく正確な壁座標系を使用
      * @param {number} r1 - セル1の行
      * @param {number} c1 - セル1の列
      * @param {number} r2 - セル2の行
@@ -148,27 +149,37 @@ const MazeGrid = ({
         let wallR, wallC, wallType;
         
         // 移動方向に応じて壁のタイプと位置を決定
+        // 仕様書準拠：壁はマスとマスの間に存在
         if (r1 === r2) { 
             // 水平移動：縦の壁をチェック
             wallType = 'vertical'; 
             wallR = r1; 
-            wallC = Math.min(c1, c2); 
-        } else { 
+            wallC = Math.min(c1, c2); // より小さい列番号を使用
+        } else if (c1 === c2) { 
             // 垂直移動：横の壁をチェック
             wallType = 'horizontal'; 
-            wallR = Math.min(r1, r2); 
+            wallR = Math.min(r1, r2); // より小さい行番号を使用
             wallC = c1; 
+        } else {
+            // 斜め移動は許可されていない
+            return false;
         }
         
-        // 壁の存在を確認
-        const definingWall = wallsToConsider?.find(w => w.type === wallType && w.r === wallR && w.c === wallC && w.active);
-        const sharedWall = sharedWallsFromAllies?.find(w => w.type === wallType && w.r === wallR && w.c === wallC && w.active);
+        // 壁の存在を確認（activeフラグもチェック）
+        const definingWall = wallsToConsider?.find(w => 
+            w.type === wallType && w.r === wallR && w.c === wallC && w.active !== false
+        );
+        const sharedWall = sharedWallsFromAllies?.find(w => 
+            w.type === wallType && w.r === wallR && w.c === wallC && w.active !== false
+        );
 
         // 表示モードに応じた壁の可視性判定
         if (isCreating || smallView) return !!definingWall;
         if (showAllWalls) return !!definingWall || !!sharedWall;
         
-        const revealedWall = revealedPlayerWalls.find(w => w.type === wallType && w.r === wallR && w.c === wallC && w.active);
+        const revealedWall = revealedPlayerWalls.find(w => 
+            w.type === wallType && w.r === wallR && w.c === wallC && w.active !== false
+        );
         return !!revealedWall || !!sharedWall;
     };
 
