@@ -58,6 +58,44 @@ function App() {
         };
         initAuth();
     }, []);
+
+    // === ページ離脱時のユーザー情報クリア処理 ===
+    useEffect(() => {
+        const handleBeforeUnload = (event) => {
+            // ローカルストレージからユーザー関連情報をクリア
+            localStorage.removeItem('labyrinthGameId');
+            localStorage.removeItem('labyrinthGameType');
+            localStorage.removeItem('labyrinth_username');
+            
+            console.log("🔄 [INFO] User data cleared on page unload");
+            
+            // ブラウザによってはこのメッセージが表示される場合があります
+            const message = 'ページを離れるとユーザー情報がリセットされます。';
+            event.returnValue = message;
+            return message;
+        };
+
+        const handleVisibilityChange = () => {
+            // ページが非表示になった場合（タブ切り替えなど）
+            if (document.visibilityState === 'hidden') {
+                localStorage.removeItem('labyrinthGameId');
+                localStorage.removeItem('labyrinthGameType');
+                localStorage.removeItem('labyrinth_username');
+                
+                console.log("🔄 [INFO] User data cleared on visibility change");
+            }
+        };
+
+        // ページ離脱時とページ非表示時のイベントリスナーを追加
+        window.addEventListener('beforeunload', handleBeforeUnload);
+        document.addEventListener('visibilitychange', handleVisibilityChange);
+
+        // クリーンアップ関数でイベントリスナーを削除
+        return () => {
+            window.removeEventListener('beforeunload', handleBeforeUnload);
+            document.removeEventListener('visibilitychange', handleVisibilityChange);
+        };
+    }, []);
     
     // === 認証完了後のゲーム状態復元処理 ===
     useEffect(() => { 

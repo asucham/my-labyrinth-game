@@ -20,6 +20,8 @@ import { db, appId } from '../firebase';
 import MazeGrid from './MazeGrid';
 import BattleModal from './BattleModal';
 import GameOverModal from './GameOverModal';
+import { HelpOverlay } from './HelpOverlay';
+import ReviewModeScreen from './ReviewModeScreen';
 import {
     STANDARD_GRID_SIZE, EXTRA_GRID_SIZE, NEGOTIATION_TYPES, SABOTAGE_TYPES,
     DECLARATION_PHASE_DURATION, CHAT_PHASE_DURATION, RESULT_PUBLICATION_DURATION, ACTION_EXECUTION_DELAY,
@@ -61,6 +63,16 @@ const PlayScreen = ({ userId, setScreen, gameMode, debugMode }) => {
 
     const [selectedMoveTarget, setSelectedMoveTarget] = useState(null);
     const [isSelectingMoveTarget, setIsSelectingMoveTarget] = useState(false);
+    
+    // ヘルプオーバーレイ表示状態
+    const [showHelpOverlay, setShowHelpOverlay] = useState(false);
+    
+    // 感想戦モード状態管理
+    const [showReviewMode, setShowReviewMode] = useState(false);
+    
+    // 移動中状態管理（2秒待機機能）
+    const [isMoving, setIsMoving] = useState(false);
+    const [hitWalls, setHitWalls] = useState([]); // プレイヤーがぶつかった壁を記録
 
     // デバッグモード用のプレイヤー切り替え機能
     const [debugCurrentPlayerId, setDebugCurrentPlayerId] = useState(userId);
@@ -122,7 +134,36 @@ const PlayScreen = ({ userId, setScreen, gameMode, debugMode }) => {
     const handleStandardMove = async (direction) => {
         // デバッグモード時は現在選択中のプレイヤーで移動、通常時は自分のターンのみ
         const canMove = debugMode ? true : (isMyStandardTurn && !inStandardBattleBetting);
-        if (!canMove) return;
+        if (!canMove || isMoving) return;
+
+        // バトル敗北による行動不能チェック
+        if (effectivePlayerState?.skipNextTurn) {
+            setMessage("バトル敗北により1ターン行動不能です。");
+            // skipNextTurnフラグをクリア
+            const gameDocRef = doc(db, `artifacts/${appId}/public/data/labyrinthGames`, gameId);
+            await updateDoc(gameDocRef, {
+                [`playerStates.${effectiveUserId}.skipNextTurn`]: null
+            });
+            
+            // ターン進行
+            if (debugMode && gameData?.turnOrder) {
+                const currentTurnIndex = gameData.turnOrder.indexOf(gameData.currentTurnPlayerId);
+                const nextTurnIndex = (currentTurnIndex + 1) % gameData.turnOrder.length;
+                const nextPlayerId = gameData.turnOrder[nextTurnIndex];
+                
+                await updateDoc(gameDocRef, {
+                    currentTurnPlayerId: nextPlayerId,
+                    turnNumber: increment(1)
+                });
+            }
+            return;
+        }
+        
+        setIsMoving(true);
+        setMessage("移動中...");
+        
+        // 2秒待機
+        await new Promise(resolve => setTimeout(resolve, 2000));
         
         const gameDocRef = doc(db, `artifacts/${appId}/public/data/labyrinthGames`, gameId);
         const { r: currentR, c: currentC } = effectivePlayerState.position;
@@ -135,7 +176,9 @@ const PlayScreen = ({ userId, setScreen, gameMode, debugMode }) => {
             case 'down': newR++; break;
             case 'left': newC--; break;
             case 'right': newC++; break;
-            default: return;
+            default: 
+                setIsMoving(false);
+                return;
         }
         
         const gridSize = mazeToPlayData?.gridSize || STANDARD_GRID_SIZE;
@@ -143,30 +186,66 @@ const PlayScreen = ({ userId, setScreen, gameMode, debugMode }) => {
         // 境界チェック
         if (newR < 0 || newR >= gridSize || newC < 0 || newC >= gridSize) {
             setMessage("盤外への移動はできません。");
+            setIsMoving(false);
             return;
         }
         
         // 壁チェック - 実際の迷路の壁構造をチェック
         const walls = mazeToPlayData?.walls || [];
+        let hitWall = null;
         const isBlocked = walls.some(wall => {
             if (wall.type === 'horizontal') {
                 // 水平壁：上下移動をブロック
-                if (direction === 'up' && wall.r === currentR && wall.c === currentC) return true;
-                if (direction === 'down' && wall.r === newR && wall.c === newC) return true;
+                if (direction === 'up' && wall.r === currentR && wall.c === currentC) {
+                    hitWall = wall;
+                    return true;
+                }
+                if (direction === 'down' && wall.r === newR && wall.c === newC) {
+                    hitWall = wall;
+                    return true;
+                }
             } else if (wall.type === 'vertical') {
                 // 垂直壁：左右移動をブロック
-                if (direction === 'left' && wall.r === currentR && wall.c === currentR) return true;
-                if (direction === 'right' && wall.r === currentR && wall.c === newC) return true;
+                if (direction === 'left' && wall.r === currentR && wall.c === currentC) {
+                    hitWall = wall;
+                    return true;
+                }
+                if (direction === 'right' && wall.r === currentR && wall.c === newC) {
+                    hitWall = wall;
+                    return true;
+                }
             }
             return false;
         });
         
-        if (isBlocked) {
+        if (isBlocked && hitWall) {
+            // 壁にぶつかった場合、その壁を記録
+            setHitWalls(prev => {
+                const wallKey = `${hitWall.type}-${hitWall.r}-${hitWall.c}`;
+                if (!prev.some(w => `${w.type}-${w.r}-${w.c}` === wallKey)) {
+                    return [...prev, hitWall];
+                }
+                return prev;
+            });
             setMessage("壁に阻まれて移動できません。");
+            setIsMoving(false);
             return;
         }
         
         try {
+            // 四人対戦モードでのバトル発生チェック
+            let battleOpponent = null;
+            if (gameData?.mode === '4player') {
+                // 移動先に他のプレイヤーがいるかチェック
+                const otherPlayers = Object.entries(gameData.playerStates || {})
+                    .filter(([pid, ps]) => pid !== effectiveUserId && ps.position)
+                    .find(([pid, ps]) => ps.position.r === newR && ps.position.c === newC);
+                
+                if (otherPlayers) {
+                    battleOpponent = otherPlayers[0]; // プレイヤーID
+                }
+            }
+
             const updates = {
                 [`playerStates.${effectiveUserId}.position`]: { r: newR, c: newC },
                 [`playerStates.${effectiveUserId}.lastMoveTime`]: serverTimestamp(),
@@ -185,7 +264,40 @@ const PlayScreen = ({ userId, setScreen, gameMode, debugMode }) => {
             if (mazeToPlayData && newR === mazeToPlayData.goal.r && newC === mazeToPlayData.goal.c && !effectivePlayerState.goalTime) {
                 updates[`playerStates.${effectiveUserId}.goalTime`] = serverTimestamp();
                 updates.goalCount = increment(1);
-                setMessage("ゴール達成！");
+                
+                // 四人対戦モードでのゴール順位によるポイント付与
+                if (gameData?.mode === '4player') {
+                    const goalOrder = [20, 15, 10, 0]; // 1位, 2位, 3位, 4位のポイント
+                    const currentGoalCount = (gameData.goalCount || 0);
+                    const goalPoints = goalOrder[currentGoalCount] || 0;
+                    if (goalPoints > 0) {
+                        updates[`playerStates.${effectiveUserId}.score`] = increment(goalPoints);
+                    }
+                    setMessage(`ゴール達成！${currentGoalCount + 1}位 +${goalPoints}pt`);
+                } else {
+                    setMessage("ゴール達成！");
+                }
+            }
+
+            // バトル発生処理
+            if (battleOpponent && gameData?.mode === '4player') {
+                // バトル状態を設定
+                updates[`playerStates.${effectiveUserId}.inBattleWith`] = battleOpponent;
+                updates[`playerStates.${battleOpponent}.inBattleWith`] = effectiveUserId;
+                updates.activeBattle = {
+                    player1: effectiveUserId,
+                    player2: battleOpponent,
+                    startTime: serverTimestamp(),
+                    status: 'betting'
+                };
+                
+                // オープンチャットに通知
+                sendSystemChatMessage(`${effectiveUserId.substring(0,8)}...と${battleOpponent.substring(0,8)}...でバトルが発生しました！`);
+                
+                // バトルモーダルを開く
+                setBattleOpponentId(battleOpponent);
+                setIsBattleModalOpen(true);
+                setMessage("バトル発生！ポイントを賭けてください。");
             }
             
             // デバッグモード時は自動的にターン切り替え
@@ -205,12 +317,102 @@ const PlayScreen = ({ userId, setScreen, gameMode, debugMode }) => {
         } catch (error) {
             console.error("Error moving:", error);
             setMessage("移動に失敗しました。");
+        } finally {
+            setIsMoving(false);
         }
     };
 
     const handleStandardBattleBet = async (betAmount) => {
-        // スタンダードモードのバトル処理
-        console.log("Battle bet:", betAmount);
+        if (!gameData?.activeBattle || !battleOpponentId) return;
+        
+        try {
+            const gameDocRef = doc(db, `artifacts/${appId}/public/data/labyrinthGames`, gameId);
+            
+            // 自分の賭けポイントを記録
+            const updates = {
+                [`playerStates.${effectiveUserId}.battleBet`]: betAmount,
+                [`playerStates.${effectiveUserId}.score`]: increment(-betAmount) // 賭けたポイントを減らす
+            };
+            
+            await updateDoc(gameDocRef, updates);
+            
+            setIsBattleModalOpen(false);
+            setMessage("ポイントを賭けました。相手の入力を待っています...");
+            
+            // 相手も賭けているかチェック
+            setTimeout(() => {
+                checkBattleReady();
+            }, 1000);
+            
+        } catch (error) {
+            console.error("Error placing battle bet:", error);
+            setMessage("賭けに失敗しました。");
+        }
+    };
+
+    // バトル準備完了チェック
+    const checkBattleReady = async () => {
+        if (!gameData?.activeBattle || !battleOpponentId) return;
+        
+        const myBet = gameData.playerStates[effectiveUserId]?.battleBet;
+        const opponentBet = gameData.playerStates[battleOpponentId]?.battleBet;
+        
+        if (myBet !== undefined && opponentBet !== undefined) {
+            // 両方が賭けた場合、バトル結果を処理
+            await processBattleResult(myBet, opponentBet);
+        }
+    };
+
+    // バトル結果処理
+    const processBattleResult = async (myBet, opponentBet) => {
+        try {
+            const gameDocRef = doc(db, `artifacts/${appId}/public/data/labyrinthGames`, gameId);
+            
+            let winner = null;
+            let loser = null;
+            
+            if (myBet > opponentBet) {
+                winner = effectiveUserId;
+                loser = battleOpponentId;
+            } else if (opponentBet > myBet) {
+                winner = battleOpponentId;
+                loser = effectiveUserId;
+            } // 同じ場合は引き分け
+            
+            const updates = {
+                // バトル状態をクリア
+                [`playerStates.${effectiveUserId}.inBattleWith`]: null,
+                [`playerStates.${battleOpponentId}.inBattleWith`]: null,
+                [`playerStates.${effectiveUserId}.battleBet`]: null,
+                [`playerStates.${battleOpponentId}.battleBet`]: null,
+                activeBattle: null
+            };
+            
+            if (winner) {
+                // 勝者に5ポイント付与
+                updates[`playerStates.${winner}.score`] = increment(5);
+                // 敗者に1ターン行動不能状態を付与
+                updates[`playerStates.${loser}.skipNextTurn`] = true;
+                
+                const winnerName = winner === effectiveUserId ? "あなた" : `${battleOpponentId.substring(0,8)}...`;
+                setMessage(`バトル結果: ${winnerName}の勝利！ (${myBet} vs ${opponentBet})`);
+                
+                // オープンチャットに結果を通知
+                sendSystemChatMessage(`勝者は${winner.substring(0,8)}...です！`);
+            } else {
+                setMessage(`バトル結果: 引き分け (${myBet} vs ${opponentBet})`);
+                sendSystemChatMessage("バトルは引き分けでした。");
+            }
+            
+            await updateDoc(gameDocRef, updates);
+            
+            // バトル関連状態をリセット
+            setBattleOpponentId("");
+            
+        } catch (error) {
+            console.error("Error processing battle result:", error);
+            setMessage("バトル結果の処理に失敗しました。");
+        }
     };
 
     // handleTrapCoordinateSelect関数の追加
@@ -812,26 +1014,45 @@ const PlayScreen = ({ userId, setScreen, gameMode, debugMode }) => {
                     freshData.playerStates[pid]?.goalTime
                 );
                 
-                // 2人プレイの場合、1人がゴールしたら終了
-                // 多人数の場合、過半数がゴールしたら終了
-                const playersToFinish = freshData.players.length === 2 ? 1 : Math.ceil(freshData.players.length / 2);
+                // 四人対戦の場合、3人目がゴールしたら終了（ポイント勝負）
+                // 2人対戦の場合、1人がゴールしたら終了（先着順）
+                let shouldFinishGame = false;
+                if (freshData.mode === '4player' && goaledPlayers.length >= 3) {
+                    shouldFinishGame = true;
+                } else if (freshData.mode === '2player' && goaledPlayers.length >= 1) {
+                    shouldFinishGame = true;
+                }
                 
-                if (goaledPlayers.length >= playersToFinish) {
+                if (shouldFinishGame) {
                     updates.status = 'finished';
                     
                     // ランキング計算
-                    const rankedPlayers = freshData.players.map(pid => ({
-                        id: pid,
-                        goalTime: freshData.playerStates[pid]?.goalTime?.toMillis() || Infinity,
-                        score: freshData.playerStates[pid]?.score || 0
-                    })).sort((a, b) => {
-                        if (a.goalTime !== b.goalTime) return a.goalTime - b.goalTime;
-                        return b.score - a.score;
-                    });
-                    
-                    rankedPlayers.forEach((player, index) => {
-                        updates[`playerStates.${player.id}.rank`] = index + 1;
-                    });
+                    if (freshData.mode === '4player') {
+                        // 四人対戦：最終的なポイント数でランキング決定
+                        const rankedPlayers = freshData.players.map(pid => ({
+                            id: pid,
+                            score: freshData.playerStates[pid]?.score || 0,
+                            goalTime: freshData.playerStates[pid]?.goalTime?.toMillis() || Infinity
+                        })).sort((a, b) => b.score - a.score); // ポイント数で降順ソート
+                        
+                        rankedPlayers.forEach((player, index) => {
+                            updates[`playerStates.${player.id}.rank`] = index + 1;
+                        });
+                    } else {
+                        // 2人対戦：ゴール到着順でランキング決定
+                        const rankedPlayers = freshData.players.map(pid => ({
+                            id: pid,
+                            goalTime: freshData.playerStates[pid]?.goalTime?.toMillis() || Infinity,
+                            score: freshData.playerStates[pid]?.score || 0
+                        })).sort((a, b) => {
+                            if (a.goalTime !== b.goalTime) return a.goalTime - b.goalTime;
+                            return b.score - a.score;
+                        });
+                        
+                        rankedPlayers.forEach((player, index) => {
+                            updates[`playerStates.${player.id}.rank`] = index + 1;
+                        });
+                    }
                 }
                 
                 transaction.update(gameDocRef, updates);
@@ -857,6 +1078,19 @@ const PlayScreen = ({ userId, setScreen, gameMode, debugMode }) => {
             return () => clearTimeout(executeWithDelay);
         }
     }, [gameData?.currentExtraModePhase, gameData?.currentActionPlayerId, myPlayerState?.actionExecutedThisTurn, executeMyDeclaredAction, gameType, userId]);
+
+    // バトル状態監視
+    useEffect(() => {
+        if (gameData?.activeBattle && battleOpponentId) {
+            const myBet = gameData.playerStates[effectiveUserId]?.battleBet;
+            const opponentBet = gameData.playerStates[battleOpponentId]?.battleBet;
+            
+            if (myBet !== undefined && opponentBet !== undefined) {
+                // 両方が賭けた場合、バトル結果を処理
+                processBattleResult(myBet, opponentBet);
+            }
+        }
+    }, [gameData?.playerStates, battleOpponentId, effectiveUserId]);
 
     // handleSendChatMessage関数の実装
     const handleSendChatMessage = async () => {
@@ -1082,6 +1316,20 @@ const PlayScreen = ({ userId, setScreen, gameMode, debugMode }) => {
         );
     };
 
+    // 感想戦モードが表示されている場合
+    if (showReviewMode) {
+        return (
+            <ReviewModeScreen
+                gameData={gameData}
+                userId={userId}
+                onClose={() => {
+                    setShowReviewMode(false);
+                    setScreen('lobby');
+                }}
+            />
+        );
+    }
+
     return (
         <div className="max-w-7xl mx-auto p-4 bg-gray-100 min-h-screen">
             {/* デバッグモード時のプレイヤー切り替えUI */}
@@ -1098,7 +1346,7 @@ const PlayScreen = ({ userId, setScreen, gameMode, debugMode }) => {
                         onClick={() => setScreen('lobby')}
                         className="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded"
                     >
-                        ロビーに戻る
+                        ホームに戻る
                     </button>
                 </div>
                 
@@ -1112,12 +1360,12 @@ const PlayScreen = ({ userId, setScreen, gameMode, debugMode }) => {
 
             {/* メインコンテンツ：スタンダードモードとエクストラモードで分岐 */}
             {gameType === 'standard' ? (
-                // スタンダードモード（二人対戦）レイアウト
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-                    {/* 左：自分が設定した迷宮 */}
-                    <div className="bg-white rounded-lg shadow-md p-4">
-                        <h2 className="text-lg font-semibold mb-4">
-                            あなたの設定した迷宮
+                // スタンダードモード（二人対戦）新レイアウト: 左（自分のプレイ画面）・中央（操作・チャット）・右（相手のプレイ画面）
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
+                    {/* 左側：自分のプレイ画面 */}
+                    <div className="lg:col-span-4 bg-white rounded-lg shadow-md p-4">
+                        <h2 className="text-lg font-semibold mb-4 text-center">
+                            🎮 あなたのプレイ画面
                         </h2>
                         
                         {myCreatedMazeData ? (
@@ -1186,6 +1434,43 @@ const PlayScreen = ({ userId, setScreen, gameMode, debugMode }) => {
                                 </div>
                             </div>
                         </div>
+
+                        {/* 四人対戦モード：全プレイヤーのポイント表示 */}
+                        {gameData?.mode === '4player' && (
+                            <div className="mb-4 p-3 bg-yellow-50 rounded-lg">
+                                <h4 className="font-semibold text-yellow-700 mb-2">🏆 プレイヤーポイント</h4>
+                                <div className="space-y-1 text-sm">
+                                    {gameData.players?.map((playerId, index) => {
+                                        const playerState = gameData.playerStates?.[playerId];
+                                        const isCurrentPlayer = playerId === effectiveUserId;
+                                        const isCurrentTurn = gameData.currentTurnPlayerId === playerId;
+                                        const isGoaled = playerState?.goalTime;
+                                        
+                                        return (
+                                            <div 
+                                                key={playerId} 
+                                                className={`flex justify-between items-center p-2 rounded ${
+                                                    isCurrentPlayer ? 'bg-green-100 border border-green-300' :
+                                                    isCurrentTurn ? 'bg-blue-100 border border-blue-300' :
+                                                    'bg-white border border-gray-200'
+                                                }`}
+                                            >
+                                                <span className={isCurrentPlayer ? 'font-bold text-green-700' : 'text-gray-700'}>
+                                                    {isCurrentPlayer ? 'あなた' : `プレイヤー${index + 1}`}
+                                                    {isCurrentTurn && <span className="ml-1 text-blue-600">📍</span>}
+                                                    {isGoaled && <span className="ml-1 text-green-600">🏁</span>}
+                                                </span>
+                                                <span className={`font-semibold ${
+                                                    isCurrentPlayer ? 'text-green-700' : 'text-yellow-600'
+                                                }`}>
+                                                    {playerState?.score || 0}pt
+                                                </span>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                        )}
                         
                         {/* 移動方法説明 */}
                         {isMyStandardTurn && (
@@ -1237,8 +1522,17 @@ const PlayScreen = ({ userId, setScreen, gameMode, debugMode }) => {
                     <div className="space-y-4">
                         {/* 上部：チャットエリア */}
                         <div className="bg-white rounded-lg shadow-md p-4">
-                            <h4 className="text-lg font-semibold mb-3 flex items-center">
-                                <MessageSquare size={18} className="mr-2"/> チャット
+                            <h4 className="text-lg font-semibold mb-3 flex items-center justify-between">
+                                <span className="flex items-center">
+                                    <MessageSquare size={18} className="mr-2"/> チャット
+                                </span>
+                                <button
+                                    className="ml-2 text-blue-500 hover:text-blue-700 text-xl focus:outline-none"
+                                    title="ヘルプ"
+                                    onClick={() => setShowHelpOverlay(true)}
+                                >
+                                    ❓
+                                </button>
                             </h4>
                             <div ref={chatLogRef} className="bg-gray-50 p-3 rounded-lg h-40 overflow-y-auto text-sm mb-3 border">
                                 {chatMessages.map(msg => (
@@ -1533,8 +1827,17 @@ const PlayScreen = ({ userId, setScreen, gameMode, debugMode }) => {
 
                         {/* チャットエリア */}
                         <div className="bg-white rounded-lg shadow-md p-4">
-                            <h4 className="text-lg font-semibold mb-3 flex items-center">
-                                <MessageSquare size={18} className="mr-2"/> チャット
+                            <h4 className="text-lg font-semibold mb-3 flex items-center justify-between">
+                                <span className="flex items-center">
+                                    <MessageSquare size={18} className="mr-2"/> チャット
+                                </span>
+                                <button
+                                    className="ml-2 text-blue-500 hover:text-blue-700 text-xl focus:outline-none"
+                                    title="ヘルプ"
+                                    onClick={() => setShowHelpOverlay(true)}
+                                >
+                                    ❓
+                                </button>
                             </h4>
                             <div ref={chatLogRef} className="bg-gray-50 p-3 rounded-lg h-32 overflow-y-auto text-sm mb-3 border">
                                 {chatMessages.map(msg => (
@@ -1570,10 +1873,11 @@ const PlayScreen = ({ userId, setScreen, gameMode, debugMode }) => {
                 <BattleModal
                     isOpen={isBattleModalOpen}
                     onClose={() => setIsBattleModalOpen(false)}
-                    gameData={gameData}
-                    userId={userId}
-                    opponentId={battleOpponentId}
                     onBet={handleStandardBattleBet}
+                    maxBet={effectivePlayerState?.score || 0}
+                    opponentName={battleOpponentId}
+                    myName={effectiveUserId}
+                    myCurrentScore={effectivePlayerState?.score || 0}
                 />
             )}
 
@@ -1584,7 +1888,13 @@ const PlayScreen = ({ userId, setScreen, gameMode, debugMode }) => {
                     gameData={gameData}
                     userId={userId}
                     onReturnToLobby={() => setScreen('lobby')}
+                    onStartReview={() => setShowReviewMode(true)}
                 />
+            )}
+
+            {/* ヘルプオーバーレイ ポップアップ */}
+            {showHelpOverlay && (
+                <HelpOverlay page={1} onClose={() => setShowHelpOverlay(false)} />
             )}
         </div>
     );
