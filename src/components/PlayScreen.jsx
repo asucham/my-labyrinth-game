@@ -647,6 +647,23 @@ const PlayScreen = ({ userId, setScreen, gameMode, debugMode }) => {
                     
                     if (data.status === 'finished') {
                         setIsGameOverModalOpen(true);
+                        // ゲーム終了時のリザルト表示
+                        if (!showResultModal) {
+                            const myState = data.playerStates?.[userId];
+                            const allPlayers = data.players || [];
+                            const goaledPlayers = allPlayers.filter(pid => data.playerStates[pid]?.goalTime);
+                            const myRank = myState?.rank || (goaledPlayers.length + 1);
+                            
+                            setResultData({
+                                isGoal: !!myState?.goalTime,
+                                rank: myRank,
+                                points: 0,
+                                message: myState?.goalTime ? "ゴール達成！" : "ゲーム終了",
+                                totalScore: myState?.score || 0,
+                                goalTime: myState?.goalTime ? new Date(myState.goalTime.seconds * 1000) : new Date()
+                            });
+                            setShowResultModal(true);
+                        }
                         return;
                     }
                     
@@ -737,6 +754,48 @@ const PlayScreen = ({ userId, setScreen, gameMode, debugMode }) => {
         
         return () => unsubscribe();
     }, [gameId, appId]);
+
+    // ゲーム終了・ゴール達成監視
+    useEffect(() => {
+        if (!gameData || !gameData.players || showResultModal) return;
+        
+        // 他のプレイヤーのゴール達成チェック
+        const goaledPlayers = gameData.players.filter(pid => 
+            gameData.playerStates[pid]?.goalTime
+        );
+        
+        // 自分がまだゴールしていない場合の終了条件チェック
+        if (!myPlayerState?.goalTime) {
+            // スタンダードモード: 2人対戦なら1人ゴールで終了、4人対戦なら3人ゴールで終了
+            let shouldShowResult = false;
+            let resultMessage = "ゲーム終了";
+            
+            if (gameData.mode === '2player' && goaledPlayers.length >= 1) {
+                shouldShowResult = true;
+                resultMessage = "相手がゴールしました";
+            } else if (gameData.mode === '4player' && goaledPlayers.length >= 3) {
+                shouldShowResult = true;
+                resultMessage = "ゲーム終了";
+            }
+            
+            if (shouldShowResult) {
+                // 自分の順位を計算（ゴールしていないプレイヤーは最下位扱い）
+                const myRank = goaledPlayers.length + 1;
+                
+                setTimeout(() => {
+                    setResultData({
+                        isGoal: false,
+                        rank: myRank,
+                        points: 0,
+                        message: resultMessage,
+                        totalScore: myPlayerState?.score || 0,
+                        goalTime: new Date()
+                    });
+                    setShowResultModal(true);
+                }, 2000); // 2秒待ってから表示
+            }
+        }
+    }, [gameData?.playerStates, gameData?.players, gameData?.mode, myPlayerState?.goalTime, showResultModal, myPlayerState?.score]);
 
     const currentGridSize = gameType === 'extra' ? EXTRA_GRID_SIZE : STANDARD_GRID_SIZE;
 
@@ -2037,6 +2096,7 @@ const PlayScreen = ({ userId, setScreen, gameMode, debugMode }) => {
                 <ReviewModeScreen
                     gameData={gameData}
                     mazeData={mazeToPlayData}
+                    allMazeData={gameData?.mazes || {}}
                     userId={userId}
                     onExit={() => {
                         setShowReviewMode(false);

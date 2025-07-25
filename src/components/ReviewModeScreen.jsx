@@ -13,17 +13,28 @@ import MazeGrid from './MazeGrid';
 /**
  * 感想戦モードコンポーネント
  * @param {Object} gameData - ゲームデータ
- * @param {Object} mazeData - 迷路データ
+ * @param {Object} mazeData - 自分が攻略した迷路データ
+ * @param {Object} allMazeData - 全プレイヤーの迷路データ
  * @param {string} userId - 現在のユーザーID
  * @param {Function} onExit - 感想戦モードを終了する関数
  */
-const ReviewModeScreen = ({ gameData, mazeData, userId, onExit }) => {
+const ReviewModeScreen = ({ gameData, mazeData, allMazeData = {}, userId, onExit }) => {
     const [selectedView, setSelectedView] = useState('both'); // 'both', 'player1', 'player2'
     const [chatMessages, setChatMessages] = useState([]);
     const [chatInput, setChatInput] = useState("");
     const chatLogRef = useRef(null);
     
     const currentUserName = getUsername() || "未設定ユーザー";
+    const players = gameData.players || [];
+    
+    // 初期表示は自分が攻略した迷路、なければ最初のプレイヤーの迷路
+    const [selectedMazeOwner, setSelectedMazeOwner] = useState(() => {
+        const myPlayerState = gameData.playerStates?.[userId];
+        return myPlayerState?.assignedMazeOwnerId || players[0] || userId;
+    });
+    
+    // 現在表示中の迷路データを取得
+    const currentDisplayMaze = allMazeData[selectedMazeOwner] || mazeData;
     
     // チャットメッセージの読み込み
     useEffect(() => {
@@ -72,7 +83,6 @@ const ReviewModeScreen = ({ gameData, mazeData, userId, onExit }) => {
         );
     }
 
-    const players = gameData.players || [];
     const currentPlayerState = gameData.playerStates[userId];
 
     return (
@@ -128,12 +138,33 @@ const ReviewModeScreen = ({ gameData, mazeData, userId, onExit }) => {
                 {/* 迷路全体ビュー */}
                 <div className="lg:col-span-2">
                     <div className="bg-white rounded-lg shadow-md p-4">
-                        <h2 className="text-lg font-semibold mb-4 flex items-center">
-                            <Map size={20} className="mr-2"/>
-                            迷路全体図（全ての壁を表示）
-                        </h2>
+                        <div className="flex justify-between items-center mb-4">
+                            <h2 className="text-lg font-semibold flex items-center">
+                                <Map size={20} className="mr-2"/>
+                                迷路全体図（全ての壁を表示）
+                            </h2>
+                            
+                            {/* 迷路選択UI */}
+                            <div className="flex items-center space-x-2">
+                                <span className="text-sm text-gray-600">表示する迷路:</span>
+                                <select
+                                    value={selectedMazeOwner}
+                                    onChange={(e) => setSelectedMazeOwner(e.target.value)}
+                                    className="px-3 py-1 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                >
+                                    {players.map((playerId, index) => {
+                                        const playerName = playerId === userId ? currentUserName : `プレイヤー${index + 1}`;
+                                        return (
+                                            <option key={playerId} value={playerId}>
+                                                {playerName}の迷路
+                                            </option>
+                                        );
+                                    })}
+                                </select>
+                            </div>
+                        </div>
                         
-                        {mazeData && (
+                        {currentDisplayMaze && (
                             <div className="relative">
                                 {/* 座標ラベル */}
                                 <div className="mb-2">
@@ -159,17 +190,17 @@ const ReviewModeScreen = ({ gameData, mazeData, userId, onExit }) => {
                                     
                                     <MazeGrid
                                         mazeData={{
-                                            ...mazeData,
-                                            walls: mazeData.walls || [] // 全ての壁を表示
+                                            ...currentDisplayMaze,
+                                            walls: currentDisplayMaze.walls || [] // 全ての壁を表示
                                         }}
                                         playerPosition={currentPlayerState?.position}
                                         otherPlayers={players.filter(p => p !== userId).map(p => ({
                                             id: p,
                                             position: gameData.playerStates[p]?.position,
-                                            name: `プレイヤー${players.indexOf(p) + 1}`
+                                            name: p === userId ? currentUserName : `プレイヤー${players.indexOf(p) + 1}`
                                         }))}
                                         revealedCells={currentPlayerState?.revealedCells || {}}
-                                        revealedPlayerWalls={mazeData.walls || []} // 全ての壁を表示
+                                        revealedPlayerWalls={currentDisplayMaze.walls || []} // 全ての壁を表示
                                         onCellClick={() => {}}
                                         gridSize={6}
                                         sharedWalls={[]}
@@ -178,6 +209,25 @@ const ReviewModeScreen = ({ gameData, mazeData, userId, onExit }) => {
                                         showAllWalls={true} // 全ての壁を表示するフラグ
                                     />
                                 </div>
+                                
+                                {/* 迷路情報 */}
+                                <div className="mt-4 p-3 bg-blue-50 rounded">
+                                    <h4 className="font-semibold text-blue-800 mb-2">
+                                        {selectedMazeOwner === userId ? currentUserName : `プレイヤー${players.indexOf(selectedMazeOwner) + 1}`}の迷路
+                                    </h4>
+                                    <div className="text-sm text-blue-700 space-y-1">
+                                        <p>• 総壁数: {currentDisplayMaze.walls?.length || 0}個</p>
+                                        <p>• ゴール位置: ({currentDisplayMaze.goal?.r || 0}, {currentDisplayMaze.goal?.c || 0})</p>
+                                        <p>• 作成者: {selectedMazeOwner === userId ? currentUserName : `プレイヤー${players.indexOf(selectedMazeOwner) + 1}`}</p>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+                        
+                        {!currentDisplayMaze && (
+                            <div className="text-center py-8 text-gray-500">
+                                <Map size={48} className="mx-auto mb-4 opacity-50"/>
+                                <p>迷路データが見つかりません</p>
                             </div>
                         )}
                         
@@ -296,7 +346,7 @@ const ReviewModeScreen = ({ gameData, mazeData, userId, onExit }) => {
                     <div>
                         <h4 className="font-semibold text-gray-700 mb-2">迷路の特徴</h4>
                         <ul className="text-sm text-gray-600 space-y-1">
-                            <li>• 総壁数: {mazeData?.walls?.length || 0}個</li>
+                            <li>• 総壁数: {currentDisplayMaze?.walls?.length || 0}個</li>
                             <li>• 迷路複雑度: 中程度</li>
                             <li>• ゴール到達率: {players.filter(p => gameData.playerStates[p]?.goalTime).length}/{players.length}</li>
                         </ul>
