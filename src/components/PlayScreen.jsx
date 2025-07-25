@@ -1406,12 +1406,12 @@ const PlayScreen = ({ userId, setScreen, gameMode, debugMode }) => {
 
             {/* メインコンテンツ：スタンダードモードとエクストラモードで分岐 */}
             {gameType === 'standard' ? (
-                // スタンダードモード（二人対戦）新レイアウト: 左（自分のプレイ画面）・中央（操作・チャット）・右（相手のプレイ画面）
-                <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
-                    {/* 左側：自分のプレイ画面 */}
-                    <div className="lg:col-span-4 bg-white rounded-lg shadow-md p-4">
+                // スタンダードモード（二人対戦）レスポンシブレイアウト: 左（相手作成・自分プレイ）・中央（操作・チャット）・右（自分作成・相手プレイ）
+                <div className="grid grid-cols-1 xl:grid-cols-12 gap-4">{/* レスポンシブ対応: xl以上で3列レイアウト */}
+                    {/* 左側：相手が作った、自分がプレイする迷路 */}
+                    <div className="xl:col-span-4 bg-white rounded-lg shadow-md p-4">
                         <h2 className="text-lg font-semibold mb-4 text-center">
-                            🎮 あなたのプレイ画面
+                            🎮 攻略する迷宮
                         </h2>
                         
                         {myCreatedMazeData ? (

@@ -342,7 +342,16 @@ const CourseCreationScreen = ({ userId, setScreen, gameMode, debugMode }) => {
 
     return (
         <div className="flex flex-col items-center justify-start min-h-screen bg-slate-100 p-4 pt-8">
-            <h1 className="text-3xl font-bold mb-2 text-slate-800">コース作成 {gameType === 'extra' && "(エクストラモード)"}</h1>
+            {/* ヘッダー部分 */}
+            <div className="w-full max-w-2xl flex justify-between items-center mb-4">
+                <h1 className="text-3xl font-bold text-slate-800">コース作成 {gameType === 'extra' && "(エクストラモード)"}</h1>
+                <button
+                    onClick={() => setScreen('lobby')}
+                    className="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded font-semibold"
+                >
+                    ホームに戻る
+                </button>
+            </div>
             {gameId && <p className="text-sm text-slate-600 mb-1">ゲームID: {gameId.substring(0,8)}...</p>}
             {userId && <p className="text-sm text-slate-600 mb-1">あなた: {userId.substring(0,8)}... ({gameMode})</p>}
             {gameType === 'extra' && creationTimeLeft !== null && 
