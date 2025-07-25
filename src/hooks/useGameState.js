@@ -3,6 +3,7 @@ import {
     doc, updateDoc, serverTimestamp, increment, collection, addDoc, query, onSnapshot, orderBy, limit
 } from 'firebase/firestore';
 import { db, appId } from '../firebase';
+import { getUsername } from '../utils';
 
 export const useGameState = (userId, setScreen, gameMode, debugMode) => {
     // 基本状態
@@ -158,7 +159,7 @@ export const useGameState = (userId, setScreen, gameMode, debugMode) => {
         try {
             const gameDocRef = doc(db, `artifacts/${appId}/public/data/labyrinthGames`, gameId);
             
-            const playerName = userId.substring(0, 8) + "...";
+            const playerName = getUsername() || "未設定ユーザー";
             
             await updateDoc(gameDocRef, {
                 status: 'disbanded',

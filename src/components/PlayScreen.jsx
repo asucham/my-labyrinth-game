@@ -26,7 +26,7 @@ import {
     PERSONAL_TIME_PENALTY_POINTS, DECLARATION_TIMEOUT_PENALTY, ALLIANCE_VIOLATION_PENALTY,
     SPECIAL_EVENT_INTERVAL_ROUNDS, SPECIAL_EVENTS // SECRET_OBJECTIVES, WALL_COUNT are used in other files
 } from '../constants';
-import { formatTime, isPathPossible } from '../utils';
+import { formatTime, isPathPossible, getUsername } from '../utils';
 
 const PlayScreen = ({ userId, setScreen, gameMode, debugMode }) => {
     const [gameId, setGameId] = useState(null);
@@ -85,6 +85,9 @@ const PlayScreen = ({ userId, setScreen, gameMode, debugMode }) => {
     // 実際に使用するplayerStateとuserIdを決定
     const effectiveUserId = debugMode ? debugCurrentPlayerId : userId;
     const effectivePlayerState = debugMode ? debugPlayerStates[debugCurrentPlayerId] : myPlayerState;
+
+    // ユーザー名を取得
+    const currentUserName = getUsername() || "未設定ユーザー";
 
     // 追加: 不足している変数の定義
     const isMyStandardTurn = gameData?.currentTurnPlayerId === effectiveUserId && gameType === 'standard';
@@ -433,11 +436,12 @@ const PlayScreen = ({ userId, setScreen, gameMode, debugMode }) => {
                 // 敗者に1ターン行動不能状態を付与
                 updates[`playerStates.${loser}.skipNextTurn`] = true;
                 
-                const winnerName = winner === effectiveUserId ? "あなた" : `${battleOpponentId.substring(0,8)}...`;
+                const winnerName = winner === effectiveUserId ? currentUserName : `${battleOpponentId.substring(0,8)}...`;
                 setMessage(`バトル結果: ${winnerName}の勝利！ (${myBet} vs ${opponentBet})`);
                 
                 // オープンチャットに結果を通知
-                sendSystemChatMessage(`勝者は${winner.substring(0,8)}...です！`);
+                const systemWinnerName = winner === effectiveUserId ? currentUserName : `${winner.substring(0,8)}...`;
+                sendSystemChatMessage(`勝者は${systemWinnerName}です！`);
             } else {
                 setMessage(`バトル結果: 引き分け (${myBet} vs ${opponentBet})`);
                 sendSystemChatMessage("バトルは引き分けでした。");
@@ -459,8 +463,8 @@ const PlayScreen = ({ userId, setScreen, gameMode, debugMode }) => {
         try {
             const gameDocRef = doc(db, `artifacts/${appId}/public/data/labyrinthGames`, gameId);
             
-            // プレイヤー名を取得（ユーザーIDの一部を使用）
-            const playerName = userId.substring(0, 8) + "...";
+            // プレイヤー名を取得（保存されたユーザー名を使用）
+            const playerName = currentUserName;
             
             // ゲームを終了状態に設定し、解散理由を記録
             await updateDoc(gameDocRef, {
@@ -1204,7 +1208,7 @@ const PlayScreen = ({ userId, setScreen, gameMode, debugMode }) => {
         try {
             await addDoc(chatCollRef, {
                 senderId: userId,
-                senderName: userId.substring(0, 8) + "...",
+                senderName: currentUserName,
                 text: chatInput,
                 timestamp: serverTimestamp()
             });
@@ -1519,14 +1523,14 @@ const PlayScreen = ({ userId, setScreen, gameMode, debugMode }) => {
                                         <h4 className="font-semibold text-blue-700 text-sm sm:text-base">現在のターン</h4>
                                         <p className="text-xs sm:text-sm text-blue-600">
                                             {gameData?.currentTurnPlayerId === effectiveUserId ? 
-                                                <span className="font-bold text-green-600">あなた</span> : 
+                                                <span className="font-bold text-green-600">{currentUserName}</span> : 
                                                 <span className="font-bold text-orange-600">相手</span>
                                             } (ターン数: {gameData?.turnNumber || 1})
                                         </p>
                                     </div>
                                     <div className="text-left sm:text-right text-xs sm:text-sm">
                                         <p className="text-blue-700">
-                                            {debugMode ? `プレイヤー ${effectiveUserId.substring(0,8)}...` : 'あなた'}の状態
+                                            {debugMode ? `プレイヤー ${effectiveUserId.substring(0,8)}...` : currentUserName}の状態
                                         </p>
                                         <p className="text-blue-600">
                                             位置: ({effectivePlayerState?.position?.r || 0}, {effectivePlayerState?.position?.c || 0})
@@ -1558,7 +1562,7 @@ const PlayScreen = ({ userId, setScreen, gameMode, debugMode }) => {
                                                     }`}
                                                 >
                                                     <span className={isCurrentPlayer ? 'font-bold text-green-700' : 'text-gray-700'}>
-                                                        {isCurrentPlayer ? 'あなた' : `プレイヤー${index + 1}`}
+                                                        {isCurrentPlayer ? currentUserName : `プレイヤー${index + 1}`}
                                                         {isCurrentTurn && <span className="ml-1 text-blue-600">📍</span>}
                                                         {isGoaled && <span className="ml-1 text-green-600">🏁</span>}
                                                     </span>
@@ -1590,7 +1594,7 @@ const PlayScreen = ({ userId, setScreen, gameMode, debugMode }) => {
                                 <div className="space-y-3">
                                     {/* ターン状態表示 */}
                                     <div className="p-3 bg-green-50 rounded-lg text-center">
-                                        <p className="text-green-600 font-semibold">🟢 あなたのターン</p>
+                                        <p className="text-green-600 font-semibold">🟢 {currentUserName}のターン</p>
                                         <p className="text-sm text-green-500">移動を選択してください</p>
                                     </div>
                                     
@@ -1813,7 +1817,7 @@ const PlayScreen = ({ userId, setScreen, gameMode, debugMode }) => {
                                     <h4 className="font-semibold mb-2">アクション実行中</h4>
                                     <p className="text-sm">
                                         現在: {gameData.currentActionPlayerId === userId ? 
-                                            <span className="text-blue-600 font-semibold">あなた</span> : 
+                                            <span className="text-blue-600 font-semibold">{currentUserName}</span> : 
                                             <span className="text-orange-600 font-semibold">相手</span>
                                         }
                                     </p>
@@ -1844,7 +1848,7 @@ const PlayScreen = ({ userId, setScreen, gameMode, debugMode }) => {
                                                 <div className="flex items-center space-x-2">
                                                     <User size={16} className={isCurrentPlayer ? 'text-blue-600' : 'text-gray-500'}/>
                                                     <span className={`font-medium ${isCurrentPlayer ? 'text-blue-800' : 'text-gray-700'}`}>
-                                                        {isCurrentPlayer ? 'あなた' : `プレイヤー ${playerId.substring(0, 8)}...`}
+                                                        {isCurrentPlayer ? currentUserName : `プレイヤー ${playerId.substring(0, 8)}...`}
                                                     </span>
                                                     {isActivePlayer && (
                                                         <span className="bg-green-500 text-white text-xs px-2 py-1 rounded-full">
