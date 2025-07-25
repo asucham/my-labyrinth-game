@@ -228,32 +228,15 @@ const MazeGrid = ({
                         cellClasses += " cursor-crosshair hover:bg-red-200/50";
                     }
 
-                    // 壁の境界線スタイルを設定
+                    // 壁の境界線スタイルを設定（外枠のみ）
                     let borderStyles = "";
-                    const wallBorderThickness = gridSize > 7 ? 'border' : 'border-2';
-                    const wallBorder = smallView ? 'border-black' : `border-black border-2`; // 常にborder-2を使用
-                    const pathBorder = smallView ? 'border-gray-300' : 'border-gray-300';
-                    const outerBorderThickness = gridSize > 7 ? 'border-black' : 'border-t-2 border-t-black';
+                    const outerBorderThickness = 'border-2 border-black';
 
-                    // 上の境界線を設定
-                    if (r === 0) borderStyles += ` border-t ${gridSize > 7 && smallView ? 'border-black' : outerBorderThickness}`;
-                    else if (hasWallBetween(r,c,r-1,c)) borderStyles += ` border-t border-2 border-t-black`; 
-                    else borderStyles += ` border-t ${pathBorder}`;
-                    
-                    // 下の境界線を設定
-                    if (r === gridSize - 1) borderStyles += ` border-b ${gridSize > 7 && smallView ? 'border-black' : `border-b-2 border-b-black`}`;
-                    else if (hasWallBetween(r,c,r+1,c)) borderStyles += ` border-b border-2 border-b-black`; 
-                    else borderStyles += ` border-b ${pathBorder}`;
-
-                    // 左の境界線を設定
-                    if (c === 0) borderStyles += ` border-l ${gridSize > 7 && smallView ? 'border-black' : `border-l-2 border-l-black`}`;
-                    else if (hasWallBetween(r,c,r,c-1)) borderStyles += ` border-l border-2 border-l-black`; 
-                    else borderStyles += ` border-l ${pathBorder}`;
-
-                    // 右の境界線を設定
-                    if (c === gridSize - 1) borderStyles += ` border-r ${gridSize > 7 && smallView ? 'border-black' : `border-r-2 border-r-black`}`;
-                    else if (hasWallBetween(r,c,r,c+1)) borderStyles += ` border-r border-2 border-r-black`; 
-                    else borderStyles += ` border-r ${pathBorder}`;
+                    // 外枠の境界線のみ設定
+                    if (r === 0) borderStyles += ` border-t ${outerBorderThickness}`;
+                    if (r === gridSize - 1) borderStyles += ` border-b ${outerBorderThickness}`;
+                    if (c === 0) borderStyles += ` border-l ${outerBorderThickness}`;
+                    if (c === gridSize - 1) borderStyles += ` border-r ${outerBorderThickness}`;
                     
                     cellClasses += ` ${borderStyles}`;
 
@@ -270,20 +253,50 @@ const MazeGrid = ({
                             {/* セルの内容を表示 */}
                             {renderCellContent(r,c)}
                             
-                            {/* 作成モードでの壁編集用UIを表示 */}
+                            {/* 壁の表示（作成モード風の表示方式を使用） */}
+                            {!smallView && (
+                                <>
+                                    {/* 横の壁表示 */}
+                                    {r < gridSize - 1 && (
+                                        <div title={`H-wall (${r},${c})`}
+                                            className={`absolute bottom-[-4px] left-0 w-full h-[6px] z-10 ${
+                                                hasWallBetween(r, c, r+1, c) 
+                                                    ? 'bg-black' 
+                                                    : ''
+                                            }`}
+                                            onClick={isCreating && onWallClick ? (e) => { e.stopPropagation(); onWallClick(r, c, 'horizontal'); } : undefined}
+                                            style={isCreating && onWallClick ? { cursor: 'pointer' } : {}}
+                                        />
+                                    )}
+                                    {/* 縦の壁表示 */}
+                                    {c < gridSize - 1 && (
+                                        <div title={`V-wall (${r},${c})`}
+                                            className={`absolute top-0 right-[-4px] w-[6px] h-full z-10 ${
+                                                hasWallBetween(r, c, r, c+1) 
+                                                    ? 'bg-black' 
+                                                    : ''
+                                            }`}
+                                            onClick={isCreating && onWallClick ? (e) => { e.stopPropagation(); onWallClick(r, c, 'vertical'); } : undefined}
+                                            style={isCreating && onWallClick ? { cursor: 'pointer' } : {}}
+                                        />
+                                    )}
+                                </>
+                            )}
+                            
+                            {/* 作成モードでの壁編集用UIを表示（作成モードの場合のみ） */}
                             {isCreating && onWallClick && !smallView && (
                                 <>
                                     {/* 横の壁編集用エリア */}
                                     {r < gridSize - 1 && (
                                         <div title={`H-wall (${r},${c})`}
-                                            className={`absolute bottom-[-4px] left-0 w-full h-[8px] cursor-pointer hover:bg-blue-300/50 z-10 ${wallSettings && wallSettings.find(w=>w.type==='horizontal' && w.r===r && w.c===c)?.active ? 'bg-black/50' : 'bg-gray-300/30'}`}
+                                            className={`absolute bottom-[-4px] left-0 w-full h-[6px] cursor-pointer hover:bg-blue-300/50 z-20 ${wallSettings && wallSettings.find(w=>w.type==='horizontal' && w.r===r && w.c===c)?.active ? 'bg-black/70' : 'bg-gray-300/30'}`}
                                             onClick={(e) => { e.stopPropagation(); onWallClick(r, c, 'horizontal'); }}
                                         />
                                     )}
                                     {/* 縦の壁編集用エリア */}
                                     {c < gridSize - 1 && (
                                         <div title={`V-wall (${r},${c})`}
-                                            className={`absolute top-0 right-[-4px] w-[8px] h-full cursor-pointer hover:bg-blue-300/50 z-10 ${wallSettings && wallSettings.find(w=>w.type==='vertical' && w.r===r && w.c===c)?.active ? 'bg-black/50' : 'bg-gray-300/30'}`}
+                                            className={`absolute top-0 right-[-4px] w-[6px] h-full cursor-pointer hover:bg-blue-300/50 z-20 ${wallSettings && wallSettings.find(w=>w.type==='vertical' && w.r===r && w.c===c)?.active ? 'bg-black/70' : 'bg-gray-300/30'}`}
                                             onClick={(e) => { e.stopPropagation(); onWallClick(r, c, 'vertical'); }}
                                         />
                                     )}
