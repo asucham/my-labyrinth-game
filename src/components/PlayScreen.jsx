@@ -73,6 +73,9 @@ const PlayScreen = ({ userId, setScreen, gameMode, debugMode }) => {
     // 移動中状態管理（2秒待機機能）
     const [isMoving, setIsMoving] = useState(false);
     const [hitWalls, setHitWalls] = useState([]); // プレイヤーがぶつかった壁を記録
+    
+    // ホームに戻る確認ダイアログ
+    const [showExitConfirmDialog, setShowExitConfirmDialog] = useState(false);
 
     // デバッグモード用のプレイヤー切り替え機能
     const [debugCurrentPlayerId, setDebugCurrentPlayerId] = useState(userId);
@@ -413,6 +416,49 @@ const PlayScreen = ({ userId, setScreen, gameMode, debugMode }) => {
             console.error("Error processing battle result:", error);
             setMessage("バトル結果の処理に失敗しました。");
         }
+    };
+
+    // ゲーム解散処理
+    const handleGameExit = async () => {
+        try {
+            const gameDocRef = doc(db, `artifacts/${appId}/public/data/labyrinthGames`, gameId);
+            
+            // プレイヤー名を取得（ユーザーIDの一部を使用）
+            const playerName = userId.substring(0, 8) + "...";
+            
+            // ゲームを終了状態に設定し、解散理由を記録
+            await updateDoc(gameDocRef, {
+                status: 'disbanded',
+                disbandReason: `${playerName}が退出したため`,
+                disbandedAt: serverTimestamp(),
+                disbandedBy: userId
+            });
+            
+            // チャットに解散メッセージを送信
+            await sendSystemChatMessage(`${playerName}が抜けたのでこのゲームは解散です。`);
+            
+            // ローカルストレージをクリア
+            localStorage.removeItem('labyrinthGameId');
+            localStorage.removeItem('labyrinthGameType');
+            
+            // ロビーに戻る
+            setScreen('lobby');
+            
+        } catch (error) {
+            console.error("Error disbanding game:", error);
+            setMessage("ゲーム解散処理に失敗しました。");
+        }
+    };
+
+    // ホームに戻る確認処理
+    const handleExitConfirm = () => {
+        setShowExitConfirmDialog(false);
+        handleGameExit();
+    };
+
+    // ホームに戻るボタンのクリック処理
+    const handleExitButtonClick = () => {
+        setShowExitConfirmDialog(true);
     };
 
     // handleTrapCoordinateSelect関数の追加
@@ -1343,7 +1389,7 @@ const PlayScreen = ({ userId, setScreen, gameMode, debugMode }) => {
                         {debugMode && <span className="text-yellow-600 ml-2 text-lg">🔧 DEBUG</span>}
                     </h1>
                     <button
-                        onClick={() => setScreen('lobby')}
+                        onClick={handleExitButtonClick}
                         className="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded"
                     >
                         ホームに戻る
@@ -1895,6 +1941,35 @@ const PlayScreen = ({ userId, setScreen, gameMode, debugMode }) => {
             {/* ヘルプオーバーレイ ポップアップ */}
             {showHelpOverlay && (
                 <HelpOverlay page={1} onClose={() => setShowHelpOverlay(false)} />
+            )}
+
+            {/* 退出確認ダイアログ */}
+            {showExitConfirmDialog && (
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+                    <div className="bg-white rounded-lg p-6 max-w-md w-11/12">
+                        <h2 className="text-xl font-bold mb-4 text-gray-800">確認</h2>
+                        <p className="text-gray-600 mb-6">
+                            本当にホームに戻りますか？<br />
+                            <span className="text-red-600 text-sm">
+                                ※ あなたが抜けるとゲームが解散され、他のプレイヤーも強制終了になります。
+                            </span>
+                        </p>
+                        <div className="flex gap-3 justify-end">
+                            <button
+                                onClick={() => setShowExitConfirmDialog(false)}
+                                className="px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded"
+                            >
+                                キャンセル
+                            </button>
+                            <button
+                                onClick={handleExitConfirm}
+                                className="px-4 py-2 bg-red-500 hover:bg-red-600 text-white rounded"
+                            >
+                                ホームに戻る
+                            </button>
+                        </div>
+                    </div>
+                </div>
             )}
         </div>
     );
