@@ -1590,25 +1590,27 @@ const PlayScreen = ({ userId, setScreen, gameMode, debugMode }) => {
                         {mazeToPlayData ? (
                             <div>
                                 {/* 自分が攻略する迷路（相手作成・壁は見えない） */}
-                                <div className="aspect-square max-w-md mx-auto">
-                                    <MazeGrid
-                                        mazeData={mazeToPlayData}
-                                        playerPosition={effectivePlayerState?.position}
-                                        otherPlayers={gameData?.playerStates ? 
-                                            Object.entries(gameData.playerStates)
-                                                .filter(([pid]) => pid !== effectiveUserId)
-                                                .map(([pid, pState]) => ({ id: pid, position: pState.position })) 
-                                            : []
-                                        }
-                                        revealedCells={effectivePlayerState?.revealedCells || {}}
-                                        revealedPlayerWalls={effectivePlayerState?.revealedWalls || []}
-                                        onCellClick={handleCellClick}
-                                        gridSize={currentGridSize}
-                                        sharedWalls={sharedWalls}
-                                        highlightPlayer={true}
-                                        smallView={false}
-                                        showAllPlayerPositions={gameType === 'standard'} // 2人対戦では相手位置を常に表示
-                                    />
+                                <div className="flex justify-center mb-4">
+                                    <div className="w-fit max-w-sm mx-auto">
+                                        <MazeGrid
+                                            mazeData={mazeToPlayData}
+                                            playerPosition={effectivePlayerState?.position}
+                                            otherPlayers={gameData?.playerStates ? 
+                                                Object.entries(gameData.playerStates)
+                                                    .filter(([pid]) => pid !== effectiveUserId)
+                                                    .map(([pid, pState]) => ({ id: pid, position: pState.position })) 
+                                                : []
+                                            }
+                                            revealedCells={effectivePlayerState?.revealedCells || {}}
+                                            revealedPlayerWalls={effectivePlayerState?.revealedWalls || []}
+                                            onCellClick={handleCellClick}
+                                            gridSize={currentGridSize}
+                                            sharedWalls={sharedWalls}
+                                            highlightPlayer={true}
+                                            smallView={false}
+                                            showAllPlayerPositions={gameType === 'standard'} // 2人対戦では相手位置を常に表示
+                                        />
+                                    </div>
                                 </div>
                                 <div className="mt-3 p-2 bg-blue-50 rounded text-sm">
                                     <p className="font-semibold text-blue-700">あなたの状態:</p>
@@ -1819,21 +1821,23 @@ const PlayScreen = ({ userId, setScreen, gameMode, debugMode }) => {
                         {myCreatedMazeData ? (
                             <div>
                                 {/* 自分が作成した迷路（壁が全て見える） */}
-                                <div className="aspect-square max-w-md mx-auto">
-                                    <MazeGrid
-                                        mazeData={{
-                                            ...myCreatedMazeData,
-                                            walls: (myCreatedMazeData.walls || []).filter(w => w.active === true)
-                                        }}
-                                        playerPosition={playerSolvingMyMaze?.position}
-                                        otherPlayers={playerSolvingMyMaze ? [playerSolvingMyMaze] : []}
-                                        showAllWalls={true}
-                                        onCellClick={() => {}}
-                                        gridSize={currentGridSize}
-                                        sharedWalls={[]}
-                                        highlightPlayer={false}
-                                        smallView={false}
-                                    />
+                                <div className="flex justify-center mb-4">
+                                    <div className="w-fit max-w-sm mx-auto">
+                                        <MazeGrid
+                                            mazeData={{
+                                                ...myCreatedMazeData,
+                                                walls: (myCreatedMazeData.walls || []).filter(w => w.active === true)
+                                            }}
+                                            playerPosition={playerSolvingMyMaze?.position}
+                                            otherPlayers={playerSolvingMyMaze ? [playerSolvingMyMaze] : []}
+                                            showAllWalls={true}
+                                            onCellClick={() => {}}
+                                            gridSize={currentGridSize}
+                                            sharedWalls={[]}
+                                            highlightPlayer={false}
+                                            smallView={false}
+                                        />
+                                    </div>
                                 </div>
                                 {playerSolvingMyMaze && (
                                     <div className="mt-3 p-2 bg-orange-50 rounded text-sm">
@@ -1871,27 +1875,31 @@ const PlayScreen = ({ userId, setScreen, gameMode, debugMode }) => {
 
                             {/* 迷路グリッド */}
                             {mazeToPlayData ? (
-                                <MazeGrid
-                                    mazeData={mazeToPlayData}
-                                    playerPosition={myPlayerState?.position}
-                                    otherPlayers={gameData?.playerStates ? 
-                                        Object.entries(gameData.playerStates)
-                                            .filter(([pid]) => pid !== userId)
-                                            .map(([pid, pState]) => ({ id: pid, position: pState.position })) 
-                                        : []
-                                    }
-                                    revealedCells={myPlayerState?.revealedCells || {}}
-                                    revealedPlayerWalls={myPlayerState?.revealedWalls || []}
-                                    onCellClick={handleCellClick}
-                                    gridSize={currentGridSize}
-                                    sharedWalls={sharedWalls}
-                                    isSelectingMoveTarget={isSelectingMoveTarget}
-                                    selectingTrapCoord={isPlacingTrap}
-                                    onTrapCoordSelect={handleTrapCoordinateSelect}
-                                    traps={gameData?.traps || []}
-                                    highlightPlayer={true}
-                                    smallView={false}
-                                />
+                                <div className="flex justify-center">
+                                    <div className="w-fit max-w-lg mx-auto">
+                                        <MazeGrid
+                                            mazeData={mazeToPlayData}
+                                            playerPosition={myPlayerState?.position}
+                                            otherPlayers={gameData?.playerStates ? 
+                                                Object.entries(gameData.playerStates)
+                                                    .filter(([pid]) => pid !== userId)
+                                                    .map(([pid, pState]) => ({ id: pid, position: pState.position })) 
+                                                : []
+                                            }
+                                            revealedCells={myPlayerState?.revealedCells || {}}
+                                            revealedPlayerWalls={myPlayerState?.revealedWalls || []}
+                                            onCellClick={handleCellClick}
+                                            gridSize={currentGridSize}
+                                            sharedWalls={sharedWalls}
+                                            isSelectingMoveTarget={isSelectingMoveTarget}
+                                            selectingTrapCoord={isPlacingTrap}
+                                            onTrapCoordSelect={handleTrapCoordinateSelect}
+                                            traps={gameData?.traps || []}
+                                            highlightPlayer={true}
+                                            smallView={false}
+                                        />
+                                    </div>
+                                </div>
                             ) : (
                                 <div className="flex items-center justify-center h-64 bg-gray-50 rounded">
                                     <p className="text-gray-500">迷路を読み込み中...</p>
